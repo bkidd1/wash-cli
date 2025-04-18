@@ -141,30 +141,52 @@ app.post('/analyze-chat', async (req, res) => {
         }
 
         const response = await openai.chat.completions.create({
-            model: "gpt-4-vision-1106",
+            model: "gpt-4.1-mini",
             messages: [
                 {
                     role: "system",
                     content: `You are an expert AI assistant analyzing ongoing chat history. Your task is to:
-1. Identify patterns in how the user is communicating with Cursor AI
-2. Point out any recurring issues or misunderstandings
-3. Suggest ways the user could improve their requests
-4. Note any successful communication strategies
-5. Track the overall progress of the conversation
+1. Identify key discussion points and decisions made
+2. Extract actionable suggestions for code improvements
+3. Generate clear, copy-pasteable prompts that the user can use in Cursor chat
+4. Note any patterns in communication that could be improved
+5. Track progress on major tasks and decisions
 
-Focus on providing actionable insights that can help improve the interaction between the user and Cursor AI.`
+Format your response as follows:
+
+KEY POINTS:
+- List main discussion topics and decisions
+- Highlight any blockers or challenges identified
+
+ACTIONABLE SUGGESTIONS:
+- Provide specific prompts that the user can copy into Cursor chat
+- Focus on architectural improvements, best practices, and optimization opportunities
+- Each suggestion should be a complete, self-contained prompt
+
+COMMUNICATION PATTERNS:
+- Note any recurring issues in how requests are framed
+- Suggest better ways to phrase questions or requests
+- Highlight successful communication strategies
+
+PROGRESS TRACKING:
+- Summarize what has been accomplished
+- List pending items or next steps
+- Note any dependencies or prerequisites
+
+DO NOT generate code directly. Instead, provide prompts that the user can copy into Cursor chat to get the desired code.`
                 },
                 {
                     role: "user",
                     content: [
                         {
                             type: "text",
-                            text: "Please analyze this latest segment of the ongoing chat and provide insights about communication patterns and potential improvements:"
+                            text: "Please analyze this latest segment of the ongoing chat and provide structured insights and actionable suggestions:"
                         },
                         {
                             type: "image_url",
                             image_url: {
-                                url: screenshot
+                                url: screenshot,
+                                detail: "low"  // Using low detail to save tokens since we're analyzing text
                             }
                         }
                     ]

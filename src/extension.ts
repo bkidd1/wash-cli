@@ -518,11 +518,14 @@ async function startChatMonitoring() {
 		}
 
 		try {
+			console.log('Capturing screenshot...');
 			const screenshot = await captureScreenshot();
 			if (!screenshot) {
+				console.log('Failed to capture screenshot');
 				return;
 			}
 
+			console.log('Sending screenshot for analysis...');
 			const response = await fetch(`${API_URL}analyze-chat`, {
 				method: 'POST',
 				headers: {
@@ -536,20 +539,30 @@ async function startChatMonitoring() {
 			});
 
 			if (!response.ok) {
-				throw new Error(`Server responded with status ${response.status}`);
+				const errorText = await response.text();
+				console.error('Server error:', {
+					status: response.status,
+					statusText: response.statusText,
+					error: errorText
+				});
+				throw new Error(`Server responded with status ${response.status}: ${errorText}`);
 			}
 
 			const data = await response.json() as { analysis: string };
+			console.log('Received analysis:', data.analysis.substring(0, 100) + '...');
 			
 			// Append the new analysis to the continuous notes
 			const timestamp = new Date().toLocaleString();
 			const newContent = `\n### Analysis at ${timestamp}\n\n${data.analysis}\n\n---\n`;
 			
+			console.log('Appending analysis to continuous notes...');
 			await fs.promises.appendFile(continuousNotesPath, newContent);
 			chatMonitorState.lastScreenshotTime = Date.now();
+			console.log('Analysis appended successfully');
 
 		} catch (error) {
 			console.error('Error in continuous chat monitoring:', error);
+			vscode.window.showErrorMessage(`Error in chat monitoring: ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}, CHAT_MONITOR_INTERVAL);
 
