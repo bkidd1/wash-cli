@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/brinleekidd/wash-cli/internal/analyzer"
 	"github.com/brinleekidd/wash-cli/internal/chat"
@@ -102,12 +104,28 @@ var startChatCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		if err := chatMonitor.Start(); err != nil {
-			fmt.Printf("Error starting chat monitor: %v\n", err)
-			os.Exit(1)
-		}
+		// Set up signal handling
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+		// Start the chat monitor in a goroutine
+		go func() {
+			if err := chatMonitor.Start(); err != nil {
+				fmt.Printf("Error starting chat monitor: %v\n", err)
+				os.Exit(1)
+			}
+		}()
 
 		fmt.Println("Chat monitoring started. Press Ctrl+C to stop.")
+
+		// Wait for interrupt signal
+		<-sigChan
+		fmt.Println("\nReceived interrupt signal. Stopping chat monitor...")
+
+		if err := chatMonitor.Stop(); err != nil {
+			fmt.Printf("Error stopping chat monitor: %v\n", err)
+			os.Exit(1)
+		}
 	},
 }
 
