@@ -17,52 +17,53 @@ const (
 
 // Config holds the application configuration
 type Config struct {
-	OpenAIAPIKey string `mapstructure:"openai_api_key"`
+	OpenAIKey string
 }
 
 // LoadConfig loads the configuration from file and environment variables
 func LoadConfig() (*Config, error) {
 	// Set up Viper
-	viper.SetConfigName(DefaultConfigName)
-	viper.SetConfigType(DefaultConfigType)
+	viper.SetConfigName("wash")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("$HOME/.wash")
 
-	// Add config paths
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	// Create config directory if it doesn't exist
+	configDir := filepath.Join(os.Getenv("HOME"), ".wash")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return nil, fmt.Errorf("error creating config directory: %w", err)
 	}
-	viper.AddConfigPath(home)
-	viper.AddConfigPath(".")
 
-	// Read from environment variables
-	viper.SetEnvPrefix("WASH")
-	viper.AutomaticEnv()
-	viper.BindEnv("openai_api_key")
-
-	// Read config file
+	// Try to read the config file
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found, create it with default values
+			viper.Set("openai_key", "")
+			if err := viper.SafeWriteConfig(); err != nil {
+				return nil, fmt.Errorf("error creating config file: %w", err)
+			}
+		} else {
 			return nil, fmt.Errorf("error reading config file: %w", err)
 		}
 	}
 
-	// Unmarshal config
-	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
-		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	// Get OpenAI key from environment variable or config file
+	openAIKey := os.Getenv("OPENAI_API_KEY")
+	if openAIKey == "" {
+		openAIKey = viper.GetString("openai_key")
 	}
 
-	// Validate required settings
-	if config.OpenAIAPIKey == "" {
-		return nil, fmt.Errorf("OpenAI API key is required. Set it in %s or WASH_OPENAI_API_KEY environment variable", filepath.Join(home, DefaultConfigName+"."+DefaultConfigType))
+	if openAIKey == "" {
+		return nil, fmt.Errorf("OpenAI API key not found. Please set OPENAI_API_KEY environment variable or add it to ~/.wash/wash.yaml")
 	}
 
-	return &config, nil
+	return &Config{
+		OpenAIKey: openAIKey,
+	}, nil
 }
 
 // SaveConfig saves the configuration to file
 func SaveConfig(config *Config) error {
-	viper.Set("openai_api_key", config.OpenAIAPIKey)
+	viper.Set("openai_key", config.OpenAIKey)
 
 	home, err := os.UserHomeDir()
 	if err != nil {

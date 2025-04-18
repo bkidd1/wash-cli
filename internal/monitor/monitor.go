@@ -1,87 +1,128 @@
 package monitor
 
 import (
-	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
-const (
-	// ChatMonitorInterval is the interval at which to take screenshots
-	ChatMonitorInterval = 30 * time.Second
-)
-
-// Monitor handles chat monitoring operations
+// Monitor represents a file system monitor
 type Monitor struct {
-	isRunning bool
-	stopChan  chan struct{}
-	notesDir  string
+	watcher *fsnotify.Watcher
+	paths   []string
+	events  chan Event
+	done    chan struct{}
 }
 
-// NewMonitor creates a new monitor instance
-func NewMonitor() (*Monitor, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %w", err)
-	}
+// Event represents a file system event
+type Event struct {
+	Path      string
+	Type      string
+	Timestamp time.Time
+}
 
-	notesDir := filepath.Join(homeDir, ".wash-notes")
-	if err := os.MkdirAll(notesDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create notes directory: %w", err)
+// NewMonitor creates a new file system monitor
+func NewMonitor(paths []string) (*Monitor, error) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create watcher: %w", err)
 	}
 
 	return &Monitor{
-		stopChan: make(chan struct{}),
-		notesDir: notesDir,
+		watcher: watcher,
+		paths:   paths,
+		events:  make(chan Event, 100),
+		done:    make(chan struct{}),
 	}, nil
 }
 
-// StartMonitoring begins the chat monitoring process
-func (m *Monitor) StartMonitoring(ctx context.Context) error {
-	if m.isRunning {
-		return fmt.Errorf("monitoring is already running")
-	}
-
-	m.isRunning = true
-	go m.monitorLoop(ctx)
-	return nil
-}
-
-// StopMonitoring stops the chat monitoring process
-func (m *Monitor) StopMonitoring() error {
-	if !m.isRunning {
-		return fmt.Errorf("monitoring is not running")
-	}
-
-	close(m.stopChan)
-	m.isRunning = false
-	return nil
-}
-
-// monitorLoop runs the main monitoring loop
-func (m *Monitor) monitorLoop(ctx context.Context) {
-	ticker := time.NewTicker(ChatMonitorInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-m.stopChan:
-			return
-		case <-ticker.C:
-			// TODO: Implement screenshot capture and analysis
-			// For now, just log that we're monitoring
-			fmt.Println("Monitoring chat...")
+// Start begins monitoring the specified paths
+func (m *Monitor) Start() error {
+	// Add paths to watcher
+	for _, path := range m.paths {
+		// If path is a directory, watch it recursively
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			if err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if info.IsDir() {
+					return m.watcher.Add(path)
+				}
+				return nil
+			}); err != nil {
+				return fmt.Errorf("failed to add directory %s to watcher: %w", path, err)
+			}
+		} else {
+			if err := m.watcher.Add(path); err != nil {
+				return fmt.Errorf("failed to add path %s to watcher: %w", path, err)
+			}
 		}
 	}
+
+	// Start watching for events
+	go func() {
+		for {
+			select {
+			case event, ok := <-m.watcher.Events:
+				if !ok {
+					return
+				}
+				m.handleEvent(event)
+			case err, ok := <-m.watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Printf("error watching files: %v", err)
+			case <-m.done:
+				return
+			}
+		}
+	}()
+
+	return nil
 }
 
-// GenerateSummary generates a summary of the chat analysis
-func (m *Monitor) GenerateSummary(ctx context.Context) (string, error) {
-	// TODO: Implement summary generation
-	// For now, return a placeholder summary
-	return "Chat Summary:\nNo analysis data available yet", nil
+// Stop stops the file system monitor
+func (m *Monitor) Stop() error {
+	close(m.done)
+	return m.watcher.Close()
+}
+
+// Events returns a channel that receives file system events
+func (m *Monitor) Events() <-chan Event {
+	return m.events
+}
+
+// handleEvent processes file system events
+func (m *Monitor) handleEvent(event fsnotify.Event) {
+	// Skip directories and hidden files
+	if strings.HasPrefix(filepath.Base(event.Name), ".") {
+		return
+	}
+
+	var eventType string
+	switch event.Op {
+	case fsnotify.Create:
+		eventType = "create"
+	case fsnotify.Write:
+		eventType = "write"
+	case fsnotify.Remove:
+		eventType = "remove"
+	case fsnotify.Rename:
+		eventType = "rename"
+	case fsnotify.Chmod:
+		eventType = "chmod"
+	}
+
+	m.events <- Event{
+		Path:      event.Name,
+		Type:      eventType,
+		Timestamp: time.Now(),
+	}
 }

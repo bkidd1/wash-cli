@@ -1,0 +1,20 @@
+User: I'm having trouble with this Go code. It's not working as expected.
+Assistant: Could you share the code you're working on?
+User: Here's the code:
+```go
+func calculate(x int) int {
+    return x * 2
+}
+```
+Assistant: I see. What's the expected behavior?
+User: I want it to handle negative numbers differently.
+Assistant: You could modify it like this:
+```go
+func calculate(x int) int {
+    if x < 0 {
+        return x * -1
+    }
+    return x * 2
+}
+```
+User: That works! Thanks for the help. 
