@@ -10,31 +10,96 @@ const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // Initialize OpenAI client
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 });
 
-// Endpoint to analyze code
-app.post('/analyze', async (req, res) => {
-    try {
-        const { files } = req.body;
+interface FileAnalysis {
+    fileName: string;
+    content: string;
+}
 
-        if (!files || !Array.isArray(files) || files.length === 0) {
-            return res.status(400).json({ error: 'No files provided' });
+// Endpoint to analyze project structure only
+app.post('/analyze-structure', async (req, res) => {
+    try {
+        console.log('Received project structure analysis request');
+        const { projectStructure } = req.body;
+
+        if (!projectStructure) {
+            console.error('No project structure provided in request');
+            return res.status(400).json({ error: 'No project structure provided' });
         }
 
-        // Analyze each file
-        const analyses = await Promise.all(
-            files.map(async (file) => {
-                const response = await openai.chat.completions.create({
-                    model: "gpt-4",
-                    messages: [
-                        {
-                            role: "system",
-                            content: `You are an expert software architect and Cursor AI assistant. Before suggesting any changes, carefully analyze the provided code and ask yourself:
+        console.log('Project structure received:', JSON.stringify(projectStructure, null, 2));
+
+        try {
+            const structureAnalysis = await openai.chat.completions.create({
+                model: "gpt-4",
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are an expert software architect. Analyze the provided project structure and provide insights about:
+1. Overall project organization
+2. Potential improvements in file/directory structure
+3. Missing or redundant components
+4. Best practices and recommendations
+
+Format your response in a clear, structured way with sections for each aspect.`
+                    },
+                    {
+                        role: "user",
+                        content: `Please analyze this project structure:\n\n${JSON.stringify(projectStructure, null, 2)}`
+                    }
+                ],
+                max_tokens: 2000
+            });
+
+            console.log('Received analysis from OpenAI');
+            res.json({ analysis: structureAnalysis.choices[0].message.content });
+        } catch (openaiError: any) {
+            console.error('OpenAI API Error:', {
+                name: openaiError?.name,
+                message: openaiError?.message,
+                status: openaiError?.status,
+                code: openaiError?.code,
+                type: openaiError?.type
+            });
+            throw openaiError;
+        }
+    } catch (error) {
+        console.error('Error in /analyze-structure endpoint:', error);
+        if (error instanceof Error) {
+            console.error('Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
+        }
+        res.status(500).json({ 
+            error: 'Failed to analyze project structure',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+// Endpoint to analyze a single file
+app.post('/analyze-file', async (req, res) => {
+    try {
+        const { fileName, content } = req.body;
+
+        if (!fileName || !content) {
+            return res.status(400).json({ error: 'File name and content are required' });
+        }
+
+        const response = await openai.chat.completions.create({
+            model: "gpt-4",
+            messages: [
+                {
+                    role: "system",
+                    content: `You are an expert software architect and Cursor AI assistant. Before suggesting any changes, carefully analyze the provided code and ask yourself:
 
 1. Is the current implementation already optimal?
    - Does it follow best practices?
@@ -46,57 +111,35 @@ app.post('/analyze', async (req, res) => {
    - Is the current solution actually the best approach?
    - Are there simpler alternatives that would work as well?
 
-If the current implementation is already optimal, acknowledge this and explain why. If changes are needed, provide clear, step-by-step instructions for Cursor's AI to implement improvements. Structure your response as follows:
+If the current implementation is already optimal, acknowledge this and explain why. If changes are needed, provide clear, step-by-step instructions for Cursor's AI to implement improvements.`
+                },
+                {
+                    role: "user",
+                    content: `Please analyze this code from file ${fileName} and determine if changes are needed:\n\n${content}`
+                }
+            ],
+            max_tokens: 2000
+        });
 
-1. Code Analysis Summary:
-   - Brief overview of current implementation
-   - Assessment of whether changes are needed
-   - Justification for keeping or changing the code
-
-2. Implementation Steps (if changes are needed):
-   For each improvement area, provide:
-   - Specific file(s) to modify
-   - Exact changes needed
-   - Code snippets showing the changes
-   - Explanation of why this change improves the code
-
-3. Cursor AI Instructions (if changes are needed):
-   - Clear, actionable steps for Cursor AI to follow
-   - Specific commands or prompts to use
-   - Order of operations for implementation
-
-4. Verification Steps (if changes are needed):
-   - How to test the changes
-   - What to look for to confirm improvements
-   - Potential edge cases to consider
-
-Format your response in a way that can be directly used as instructions for Cursor's AI. Focus on practical, implementable changes that can be executed through Cursor's interface.`
-                        },
-                        {
-                            role: "user",
-                            content: `Please analyze this code from file ${file.fileName} and determine if changes are needed. If so, provide implementation instructions for Cursor AI:\n\n${file.content}`
-                        }
-                    ],
-                    max_tokens: 2000
-                });
-
-                return {
-                    fileName: file.fileName,
-                    analysis: response.choices[0].message.content
-                };
-            })
-        );
-
-        // Combine analyses into a single response
-        const combinedAnalysis = analyses.map(analysis => 
-            `=== Analysis for ${analysis.fileName} ===\n\n${analysis.analysis}\n\n`
-        ).join('\n');
-
-        res.json({ analysis: combinedAnalysis });
+        res.json({ 
+            fileName,
+            analysis: response.choices[0].message.content 
+        });
     } catch (error) {
-        console.error('Error analyzing code:', error);
-        res.status(500).json({ error: 'Failed to analyze code' });
+        console.error('Error analyzing file:', error);
+        res.status(500).json({ error: 'Failed to analyze file' });
     }
+});
+
+// Error handling middleware
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('Error:', err);
+    if (err.type === 'entity.too.large') {
+        return res.status(413).json({ 
+            error: 'Request payload too large. Please split your request into smaller chunks using the separate endpoints.' 
+        });
+    }
+    res.status(500).json({ error: 'Internal server error' });
 });
 
 app.listen(port, () => {

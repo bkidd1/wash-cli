@@ -23,6 +23,10 @@
       {
         "command": "wash.analyzeMultipleFiles",
         "title": "Wash: Analyze Multiple Files"
+      },
+      {
+        "command": "wash.exploreProject",
+        "title": "Wash: Explore Project Structure"
       }
     ]
   },
