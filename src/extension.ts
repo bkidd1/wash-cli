@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
-const API_URL = 'https://api.wash.dev'; // Replace with your actual hosted API URL
+const API_URL = 'http://localhost:3000/';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -28,7 +28,8 @@ export function activate(context: vscode.ExtensionContext) {
 				cancellable: false
 			}, async (progress) => {
 				try {
-					const response = await fetch(`${API_URL}/analyze`, {
+					console.log('Sending request to:', `${API_URL}analyze`);
+					const response = await fetch(`${API_URL}analyze`, {
 						method: 'POST',
 						headers: {
 							'Content-Type': 'application/json',
@@ -37,7 +38,8 @@ export function activate(context: vscode.ExtensionContext) {
 					});
 
 					if (!response.ok) {
-						throw new Error('Failed to analyze code');
+						const errorText = await response.text();
+						throw new Error(`Server responded with status ${response.status}: ${errorText}`);
 					}
 
 					const data = await response.json() as { analysis: string };
