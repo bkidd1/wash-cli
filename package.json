@@ -19,6 +19,10 @@
       {
         "command": "wash.analyzePathways",
         "title": "Wash: Analyze Coding Pathways"
+      },
+      {
+        "command": "wash.analyzeMultipleFiles",
+        "title": "Wash: Analyze Multiple Files"
       }
     ]
   },

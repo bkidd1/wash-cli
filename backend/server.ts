@@ -20,18 +20,21 @@ const openai = new OpenAI({
 // Endpoint to analyze code
 app.post('/analyze', async (req, res) => {
     try {
-        const { code } = req.body;
+        const { files } = req.body;
 
-        if (!code) {
-            return res.status(400).json({ error: 'No code provided' });
+        if (!files || !Array.isArray(files) || files.length === 0) {
+            return res.status(400).json({ error: 'No files provided' });
         }
 
-        const response = await openai.chat.completions.create({
-            model: "gpt-4",
-            messages: [
-                {
-                    role: "system",
-                    content: `You are an expert software architect and Cursor AI assistant. Before suggesting any changes, carefully analyze the provided code and ask yourself:
+        // Analyze each file
+        const analyses = await Promise.all(
+            files.map(async (file) => {
+                const response = await openai.chat.completions.create({
+                    model: "gpt-4",
+                    messages: [
+                        {
+                            role: "system",
+                            content: `You are an expert software architect and Cursor AI assistant. Before suggesting any changes, carefully analyze the provided code and ask yourself:
 
 1. Is the current implementation already optimal?
    - Does it follow best practices?
@@ -68,16 +71,28 @@ If the current implementation is already optimal, acknowledge this and explain w
    - Potential edge cases to consider
 
 Format your response in a way that can be directly used as instructions for Cursor's AI. Focus on practical, implementable changes that can be executed through Cursor's interface.`
-                },
-                {
-                    role: "user",
-                    content: `Please analyze this code and determine if changes are needed. If so, provide implementation instructions for Cursor AI:\n\n${code}`
-                }
-            ],
-            max_tokens: 2000
-        });
+                        },
+                        {
+                            role: "user",
+                            content: `Please analyze this code from file ${file.fileName} and determine if changes are needed. If so, provide implementation instructions for Cursor AI:\n\n${file.content}`
+                        }
+                    ],
+                    max_tokens: 2000
+                });
 
-        res.json({ analysis: response.choices[0].message.content });
+                return {
+                    fileName: file.fileName,
+                    analysis: response.choices[0].message.content
+                };
+            })
+        );
+
+        // Combine analyses into a single response
+        const combinedAnalysis = analyses.map(analysis => 
+            `=== Analysis for ${analysis.fileName} ===\n\n${analysis.analysis}\n\n`
+        ).join('\n');
+
+        res.json({ analysis: combinedAnalysis });
     } catch (error) {
         console.error('Error analyzing code:', error);
         res.status(500).json({ error: 'Failed to analyze code' });
