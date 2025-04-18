@@ -2,6 +2,22 @@
 
 Wash is a VSCode extension that helps developers explore alternative coding pathways when they're stuck. It uses GPT-4 Vision to analyze your code and suggest different approaches you could have taken.
 
+## Project Structure
+
+```
+wash/
+├── src/                    # VSCode extension source code
+│   ├── extension.ts        # Main extension code
+│   └── test/              # Extension tests
+├── backend/               # Backend server code
+│   ├── server.ts          # Local development server
+│   ├── lambda.ts          # AWS Lambda handler
+│   ├── package.json       # Backend dependencies
+│   └── tsconfig.json      # Backend TypeScript config
+├── package.json           # Extension dependencies
+└── tsconfig.json          # Extension TypeScript config
+```
+
 ## Features
 
 - 🔍 Analyze current code implementation
@@ -9,11 +25,92 @@ Wash is a VSCode extension that helps developers explore alternative coding path
 - 🔒 Secure API key storage
 - 📊 Clean, readable analysis display
 
-## Installation
+## Development Setup
 
-1. Install the extension from the VSCode marketplace
-2. Configure your OpenAI API key (see below)
-3. Start analyzing your code!
+### Prerequisites
+
+- Node.js 18+
+- VSCode
+- AWS CLI (for deployment)
+
+### Local Development
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/wash.git
+   cd wash
+   ```
+
+2. Install dependencies:
+   ```bash
+   # Install extension dependencies
+   npm install
+   
+   # Install backend dependencies
+   cd backend
+   npm install
+   ```
+
+3. Set up environment variables:
+   ```bash
+   # Create .env.local in backend directory
+   cd backend
+   cp .env .env.local
+   # Edit .env.local with your OpenAI API key
+   ```
+
+4. Start the backend server:
+   ```bash
+   cd backend
+   npm start
+   ```
+
+5. Open the extension in a new VSCode window:
+   ```bash
+   /Applications/Visual\ Studio\ Code.app/Contents/Resources/app/bin/code --new-window --extensionDevelopmentPath="$(pwd)"
+   ```
+
+6. Run the extension:
+   - Press F5 in VSCode to launch the extension in a new window
+   - Use the "Wash: Analyze Coding Pathways" command to test
+
+### Deployment
+
+1. Set up AWS credentials:
+   ```bash
+   aws configure
+   ```
+
+2. Deploy the backend:
+   ```bash
+   cd backend
+   ./deploy.sh
+   ```
+
+3. Update the extension's API URL in `src/extension.ts`
+
+4. Package the extension:
+   ```bash
+   npm run package
+   ```
+
+## Security
+
+- API keys are stored securely in AWS Secrets Manager
+- All API calls are authenticated
+- Rate limiting is implemented on the backend
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+MIT
 
 ## Configuration
 
@@ -37,14 +134,6 @@ Your OpenAI API key is stored securely in VSCode's configuration system and is n
 
 - VSCode 1.99.0 or higher
 - OpenAI API key with access to GPT-4 Vision
-
-## License
-
-MIT
-
-## Contributing
-
-Feel free to open issues or submit pull requests!
 
 ## Extension Settings
 
