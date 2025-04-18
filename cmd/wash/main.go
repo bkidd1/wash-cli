@@ -11,7 +11,6 @@ import (
 	"github.com/brinleekidd/wash-cli/internal/analyzer"
 	"github.com/brinleekidd/wash-cli/internal/chat"
 	"github.com/brinleekidd/wash-cli/pkg/config"
-	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"
 )
 
@@ -33,8 +32,7 @@ var fileCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		filePath := args[0]
-		client := openai.NewClient(cfg.OpenAIKey)
-		analyzer := analyzer.NewAnalyzer(client)
+		analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey)
 
 		result, err := analyzer.AnalyzeFile(context.Background(), filePath)
 		if err != nil {
@@ -52,8 +50,7 @@ var structureCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		dirPath := args[0]
-		client := openai.NewClient(cfg.OpenAIKey)
-		analyzer := analyzer.NewAnalyzer(client)
+		analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey)
 
 		result, err := analyzer.AnalyzeProjectStructure(context.Background(), dirPath)
 		if err != nil {
@@ -69,8 +66,7 @@ var chatSummaryCmd = &cobra.Command{
 	Use:   "chat summary",
 	Short: "Analyze chat history and provide insights",
 	Run: func(cmd *cobra.Command, args []string) {
-		client := openai.NewClient(cfg.OpenAIKey)
-		analyzer := analyzer.NewAnalyzer(client)
+		analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey)
 
 		// Read the chat analysis file
 		notesDir := filepath.Join(os.Getenv("HOME"), ".wash", "notes")
@@ -147,6 +143,37 @@ var stopChatCmd = &cobra.Command{
 	},
 }
 
+var fixCmd = &cobra.Command{
+	Use:   "fix [error-type]",
+	Short: "Get help fixing common errors",
+	Long: `Get help fixing common errors based on the chat analysis history.
+The error type can be a specific error message or a general category of error.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		errorType := args[0]
+		analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey)
+
+		// Read the chat analysis file
+		notesDir := filepath.Join(os.Getenv("HOME"), ".wash", "notes")
+		analysisPath := filepath.Join(notesDir, "chat_analysis.txt")
+
+		content, err := os.ReadFile(analysisPath)
+		if err != nil {
+			fmt.Printf("Error reading chat analysis file: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Get error fix suggestions
+		result, err := analyzer.GetErrorFix(context.Background(), string(content), errorType)
+		if err != nil {
+			fmt.Printf("Error getting fix suggestions: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println(result)
+	},
+}
+
 func init() {
 	var err error
 	cfg, err = config.LoadConfig()
@@ -160,6 +187,7 @@ func init() {
 	rootCmd.AddCommand(chatSummaryCmd)
 	rootCmd.AddCommand(startChatCmd)
 	rootCmd.AddCommand(stopChatCmd)
+	rootCmd.AddCommand(fixCmd)
 }
 
 func main() {

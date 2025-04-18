@@ -71,8 +71,28 @@ func (m *ChatMonitor) Start() error {
 	fmt.Println("Starting chat monitor...")
 	// Create initial note file with header
 	headerPath := filepath.Join(m.notesDir, "chat_analysis.txt")
-	header := fmt.Sprintf("# Continuous Chat Analysis\n*Started on %s*\n\n## Conversation Patterns and Insights\n\n",
-		m.startTime.Format("1/2/2006, 3:04:05 PM"))
+	header := `# Chat Analysis
+
+## Current Approach
+[Initializing chat monitor and starting analysis]
+
+## Better Solutions
+1. [Waiting for first analysis]
+   - Key benefits: [To be determined]
+   - Implementation steps: [To be determined]
+
+2. [Alternative solution pending]
+   - Key benefits: [To be determined]
+   - Implementation steps: [To be determined]
+
+## Technical Considerations
+- [Waiting for first analysis]
+- [System will analyze chat interactions every 30 seconds]
+
+## Best Practices
+- [Waiting for first analysis]
+- [Will provide recommendations based on observed patterns]
+`
 
 	if err := os.WriteFile(headerPath, []byte(header), 0644); err != nil {
 		return fmt.Errorf("failed to create header file: %v", err)
@@ -224,78 +244,90 @@ func (m *ChatMonitor) monitorLoop() {
 }
 
 func (m *ChatMonitor) analyzeScreenshot() error {
-	fmt.Println("Capturing screenshot...")
-	// Take screenshot of primary display
-	screenshot, err := screenshot.Capture(0)
-	if err != nil {
+	// Take a screenshot
+	screenshotPath := filepath.Join(m.notesDir, "latest_screenshot.png")
+	if err := screenshot.CaptureWindow("Cursor", screenshotPath); err != nil {
 		return fmt.Errorf("failed to capture screenshot: %v", err)
 	}
-	fmt.Printf("Screenshot captured: %s\n", screenshot.Path)
 
 	// Read the screenshot file
-	imageBytes, err := os.ReadFile(screenshot.Path)
+	imageData, err := os.ReadFile(screenshotPath)
 	if err != nil {
 		return fmt.Errorf("failed to read screenshot: %v", err)
 	}
-	fmt.Printf("Read screenshot file, size: %d bytes\n", len(imageBytes))
 
-	// Convert image to base64
-	base64Image := base64.StdEncoding.EncodeToString(imageBytes)
-	fmt.Println("Converted image to base64")
+	// Convert to base64
+	base64Image := base64.StdEncoding.EncodeToString(imageData)
 
-	// Analyze the screenshot using OpenAI Vision API
-	fmt.Println("Sending request to OpenAI Vision API...")
+	// Create the request with the correct model and message format
 	req := openai.ChatCompletionRequest{
-		Model: "gpt-4.1-mini",
+		Model: "gpt-4-vision-preview",
 		Messages: []openai.ChatCompletionMessage{
 			{
-				Role: "user",
-				MultiContent: []openai.ChatMessagePart{
-					{
-						Type: "text",
-						Text: "Please analyze this screenshot of a Cursor chat console. Look for any user input and potential mistakes or misguidance in the conversation. Focus on identifying where the user might have gone wrong or been misled. Format your response in markdown with the following sections: KEY POINTS, ACTIONABLE SUGGESTIONS, COMMUNICATION PATTERNS, and PROGRESS TRACKING.",
-					},
-					{
-						Type: "image_url",
-						ImageURL: &openai.ChatMessageImageURL{
-							URL:    fmt.Sprintf("data:image/png;base64,%s", base64Image),
-							Detail: "high",
-						},
-					},
-				},
+				Role: openai.ChatMessageRoleSystem,
+				Content: `You are an expert AI assistant analyzing chat interactions. Your task is to analyze the chat screenshot and provide insights in the following format:
+
+# Chat Analysis
+
+## Current Approach
+[1-2 sentences describing what the user is trying to do]
+
+## Better Solutions
+1. [Primary solution] - [1-2 sentence explanation]
+   - Key benefits: [bullet points]
+   - Implementation steps: [brief steps]
+
+2. [Alternative solution] - [1-2 sentence explanation]
+   - Key benefits: [bullet points]
+   - Implementation steps: [brief steps]
+
+## Error Tracking
+- [Error Type]: [Brief description of the error]
+  - Root Cause: [Why the error occurs]
+  - Solution: [How to fix it]
+  - Prevention: [How to avoid it in the future]
+  - Command: [The command to fix it, if applicable]
+
+## Technical Considerations
+- [Important technical detail 1]
+- [Important technical detail 2]
+
+## Best Practices
+- [Relevant best practice 1]
+- [Relevant best practice 2]
+
+Focus on suggesting better approaches than what was attempted, with clear benefits and implementation steps.`,
+			},
+			{
+				Role:    openai.ChatMessageRoleUser,
+				Content: fmt.Sprintf("Please analyze this chat interaction and provide insights.\n\nImage: data:image/png;base64,%s", base64Image),
 			},
 		},
-		MaxTokens: 300,
+		MaxTokens: 1000,
 	}
 
-	fmt.Printf("Request details:\nModel: %s\nMaxTokens: %d\n", req.Model, req.MaxTokens)
-	fmt.Printf("Message count: %d\n", len(req.Messages))
-	fmt.Printf("Content parts: %d\n", len(req.Messages[0].MultiContent))
-
+	// Get the analysis from OpenAI
 	resp, err := m.client.CreateChatCompletion(context.Background(), req)
 	if err != nil {
-		fmt.Printf("OpenAI API error details:\n%+v\n", err)
-		return fmt.Errorf("failed to analyze screenshot: %v", err)
+		return fmt.Errorf("failed to get analysis: %v", err)
 	}
-	fmt.Println("Received response from OpenAI Vision API")
 
-	// Append the analysis to the main note file
-	notePath := filepath.Join(m.notesDir, "chat_analysis.txt")
-	analysis := fmt.Sprintf("\n### Analysis at %s\n\n%s\n---\n",
-		time.Now().Format("1/2/2006, 3:04:05 PM"),
-		resp.Choices[0].Message.Content)
+	// Append the analysis to the notes file with a timestamp
+	analysisPath := filepath.Join(m.notesDir, "chat_analysis.txt")
+	analysis := resp.Choices[0].Message.Content
 
-	// Open the file in append mode
-	f, err := os.OpenFile(notePath, os.O_APPEND|os.O_WRONLY, 0644)
+	// Open file in append mode
+	f, err := os.OpenFile(analysisPath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open note file: %v", err)
+		return fmt.Errorf("failed to open analysis file: %v", err)
 	}
 	defer f.Close()
 
-	if _, err := f.WriteString(analysis); err != nil {
+	// Write the analysis with a timestamp
+	timestamp := time.Now().Format("1/2/2006, 3:04:05 PM")
+	if _, err := f.WriteString(fmt.Sprintf("\n\n### Analysis at %s\n\n%s\n", timestamp, analysis)); err != nil {
 		return fmt.Errorf("failed to write analysis: %v", err)
 	}
-	fmt.Printf("Analysis written to: %s\n", notePath)
 
 	return nil
 }

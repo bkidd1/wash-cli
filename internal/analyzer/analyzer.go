@@ -1,8 +1,12 @@
 package analyzer
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,12 +17,15 @@ import (
 // Analyzer represents a code analyzer
 type Analyzer struct {
 	client *openai.Client
+	apiKey string
 }
 
 // NewAnalyzer creates a new code analyzer
-func NewAnalyzer(client *openai.Client) *Analyzer {
+func NewAnalyzer(apiKey string) *Analyzer {
+	client := openai.NewClient(apiKey)
 	return &Analyzer{
 		client: client,
+		apiKey: apiKey,
 	}
 }
 
@@ -211,6 +218,159 @@ Format your response in a clear, structured way with these sections:
 	)
 	if err != nil {
 		return "", fmt.Errorf("error getting analysis: %w", err)
+	}
+
+	return resp.Choices[0].Message.Content, nil
+}
+
+func (a *Analyzer) analyzeChat(chatContent string) string {
+	// Create a more focused prompt for the AI
+	prompt := fmt.Sprintf(`Analyze the following chat interaction and provide a concise, actionable analysis focusing on better solutions than what was attempted. Format the response as follows:
+
+# Chat Analysis
+
+## Current Approach
+[1-2 sentences describing what the user is trying to do]
+
+## Better Solutions
+1. [Primary solution] - [1-2 sentence explanation]
+   - Key benefits: [bullet points]
+   - Implementation steps: [brief steps]
+
+2. [Alternative solution] - [1-2 sentence explanation]
+   - Key benefits: [bullet points]
+   - Implementation steps: [brief steps]
+
+## Technical Considerations
+- [Important technical detail 1]
+- [Important technical detail 2]
+
+## Best Practices
+- [Relevant best practice 1]
+- [Relevant best practice 2]
+
+Chat content:
+%s`, chatContent)
+
+	// Get analysis from AI
+	analysis, err := a.getAIResponse(prompt)
+	if err != nil {
+		return fmt.Sprintf("Error analyzing chat: %v", err)
+	}
+
+	return analysis
+}
+
+func (a *Analyzer) getAIResponse(prompt string) (string, error) {
+	// Create the request body
+	requestBody := map[string]interface{}{
+		"model": "gpt-4",
+		"messages": []map[string]string{
+			{
+				"role":    "system",
+				"content": "You are a helpful AI assistant that analyzes chat interactions and suggests better solutions.",
+			},
+			{
+				"role":    "user",
+				"content": prompt,
+			},
+		},
+		"temperature": 0.7,
+	}
+
+	// Convert request body to JSON
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("error marshaling request body: %v", err)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", fmt.Errorf("error creating request: %v", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+a.apiKey)
+
+	// Send request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("error sending request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("error reading response body: %v", err)
+	}
+
+	// Parse response
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("error parsing response: %v", err)
+	}
+
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("no response from AI")
+	}
+
+	return response.Choices[0].Message.Content, nil
+}
+
+// GetErrorFix analyzes chat history for specific error types and provides fix suggestions
+func (a *Analyzer) GetErrorFix(ctx context.Context, chatHistory string, errorType string) (string, error) {
+	systemPrompt := fmt.Sprintf(`You are an expert AI assistant analyzing chat history for error patterns and solutions. Your task is to:
+1. Look for instances of the error type: "%s"
+2. Extract the root cause, solution, and prevention steps
+3. Provide the specific command to fix the error if available
+4. Format the response in a clear, actionable way
+
+Format your response as follows:
+
+# Error Fix: %s
+
+## Root Cause
+[Explain why this error occurs]
+
+## Solution
+[Step-by-step solution]
+
+## Prevention
+[How to avoid this error in the future]
+
+## Fix Command
+[The specific command to fix this error, if available]
+
+If no specific instances of this error are found in the chat history, provide general best practices for handling similar errors.`, errorType, errorType)
+
+	resp, err := a.client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: systemPrompt,
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: chatHistory,
+				},
+			},
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("error getting error fix: %w", err)
 	}
 
 	return resp.Choices[0].Message.Content, nil

@@ -56,3 +56,34 @@ func Capture(displayIndex int) (*Screenshot, error) {
 func GetDisplayCount() int {
 	return screenshot.NumActiveDisplays()
 }
+
+// CaptureWindow takes a screenshot of a specific window by title
+func CaptureWindow(windowTitle string, outputPath string) error {
+	// For now, we'll just capture the entire primary display
+	// In the future, we can add window-specific capture using platform-specific APIs
+	bounds := screenshot.GetDisplayBounds(0)
+
+	// Capture the screenshot
+	img, err := screenshot.CaptureRect(bounds)
+	if err != nil {
+		return fmt.Errorf("failed to capture screenshot: %w", err)
+	}
+
+	// Create parent directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Save the screenshot
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create screenshot file: %w", err)
+	}
+	defer file.Close()
+
+	if err := png.Encode(file, img); err != nil {
+		return fmt.Errorf("failed to encode screenshot: %w", err)
+	}
+
+	return nil
+}
