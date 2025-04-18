@@ -11,7 +11,8 @@
     "AI"
   ],
   "activationEvents": [
-    "onCommand:wash.analyzePathways"
+    "onCommand:wash.analyzePathways",
+    "onCommand:wash.analyzeChatHistory"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -27,6 +28,18 @@
       {
         "command": "wash.exploreProject",
         "title": "Wash: Explore Project Structure"
+      },
+      {
+        "command": "wash.startChatMonitoring",
+        "title": "Wash: Start Chat Monitoring"
+      },
+      {
+        "command": "wash.stopChatMonitoring",
+        "title": "Wash: Stop Chat Monitoring"
+      },
+      {
+        "command": "wash.generateSummary",
+        "title": "Wash: Generate Chat Summary"
       }
     ]
   },

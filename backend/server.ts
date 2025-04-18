@@ -131,6 +131,102 @@ If the current implementation is already optimal, acknowledge this and explain w
     }
 });
 
+// Endpoint to analyze chat history from screenshot
+app.post('/analyze-chat', async (req, res) => {
+    try {
+        const { screenshot, lastAnalysisTime } = req.body;
+
+        if (!screenshot) {
+            return res.status(400).json({ error: 'Screenshot is required' });
+        }
+
+        const response = await openai.chat.completions.create({
+            model: "gpt-4-vision-1106",
+            messages: [
+                {
+                    role: "system",
+                    content: `You are an expert AI assistant analyzing ongoing chat history. Your task is to:
+1. Identify patterns in how the user is communicating with Cursor AI
+2. Point out any recurring issues or misunderstandings
+3. Suggest ways the user could improve their requests
+4. Note any successful communication strategies
+5. Track the overall progress of the conversation
+
+Focus on providing actionable insights that can help improve the interaction between the user and Cursor AI.`
+                },
+                {
+                    role: "user",
+                    content: [
+                        {
+                            type: "text",
+                            text: "Please analyze this latest segment of the ongoing chat and provide insights about communication patterns and potential improvements:"
+                        },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                url: screenshot
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens: 2000
+        });
+
+        res.json({ 
+            analysis: response.choices[0].message.content 
+        });
+    } catch (error) {
+        console.error('Error analyzing chat:', error);
+        res.status(500).json({ error: 'Failed to analyze chat' });
+    }
+});
+
+// Endpoint to summarize chat notes
+app.post('/summarize-chat', async (req, res) => {
+    try {
+        const { notes } = req.body;
+
+        if (!notes) {
+            return res.status(400).json({ error: 'Notes content is required' });
+        }
+
+        const response = await openai.chat.completions.create({
+            model: "gpt-4",
+            messages: [
+                {
+                    role: "system",
+                    content: `You are an expert AI assistant analyzing chat history summaries. Your task is to:
+1. Identify the main patterns and themes in the conversation
+2. Highlight recurring issues or misunderstandings
+3. Note successful communication strategies
+4. Provide actionable recommendations for improvement
+5. Track the overall progress of the interaction
+
+Format your response in a clear, structured way with these sections:
+- Key Patterns and Themes
+- Communication Strengths
+- Areas for Improvement
+- Actionable Recommendations
+- Overall Progress`
+                },
+                {
+                    role: "user",
+                    content: `Please analyze and summarize these chat notes:\n\n${notes}`
+                }
+            ],
+            max_tokens: 2000
+        });
+
+        res.json({ 
+            summary: response.choices[0].message.content 
+        });
+    } catch (error) {
+        console.error('Error summarizing chat:', error);
+        res.status(500).json({ error: 'Failed to summarize chat' });
+    }
+});
+
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error('Error:', err);
