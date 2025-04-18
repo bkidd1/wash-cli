@@ -144,7 +144,7 @@ var stopChatCmd = &cobra.Command{
 }
 
 var fixCmd = &cobra.Command{
-	Use:   "fix [error-type]",
+	Use:   "bruh [error-type]",
 	Short: "Get help fixing common errors",
 	Long: `Get help fixing common errors based on the chat analysis history.
 The error type can be a specific error message or a general category of error.`,
