@@ -119,32 +119,40 @@ func (a *Analyzer) AnalyzeChat(ctx context.Context, chatHistory string) (string,
 	systemPrompt := `You are an expert AI assistant analyzing ongoing chat history. Your task is to:
 1. Identify key discussion points and decisions made
 2. Extract actionable suggestions for code improvements
-3. Generate clear, copy-pasteable prompts that the user can use in Cursor chat
-4. Note any patterns in communication that could be improved
-5. Track progress on major tasks and decisions
+3. Note any patterns in communication that could be improved
+4. Track progress on major tasks and decisions
 
 Format your response as follows:
 
-KEY POINTS:
-- List main discussion topics and decisions
-- Highlight any blockers or challenges identified
+# ISSUE: [Brief description of the main issue/topic]
 
-ACTIONABLE SUGGESTIONS:
-- Provide specific prompts that the user can copy into Cursor chat
-- Focus on architectural improvements, best practices, and optimization opportunities
-- Each suggestion should be a complete, self-contained prompt
+## Problem
+- List specific problems or challenges identified
+- Include relevant error messages or symptoms
 
-COMMUNICATION PATTERNS:
-- Note any recurring issues in how requests are framed
-- Suggest better ways to phrase questions or requests
-- Highlight successful communication strategies
+## Debug Steps Taken
+- List steps already attempted
+- Note any successful or failed approaches
 
-PROGRESS TRACKING:
-- Summarize what has been accomplished
-- List pending items or next steps
-- Note any dependencies or prerequisites
+## Root Cause
+- Identify the underlying cause of the issue
+- Explain why the problem occurs
 
-DO NOT generate code directly. Instead, provide prompts that the user can copy into Cursor chat to get the desired code.`
+## Action Items
+1. [Specific, actionable task]
+2. [Specific, actionable task]
+3. [Specific, actionable task]
+
+## Technical Details
+- Expected behavior: [description]
+- Actual behavior: [description]
+- Error codes: [if applicable]
+- File paths: [if relevant]
+
+## Next Steps
+1. [Immediate next action]
+2. [Follow-up action]
+3. [Long-term consideration]`
 
 	resp, err := a.client.CreateChatCompletion(
 		ctx,
