@@ -4,31 +4,29 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
+	"path/filepath"
 
 	"github.com/brinleekidd/wash-cli/internal/analyzer"
-	"github.com/brinleekidd/wash-cli/internal/monitor"
-	"github.com/brinleekidd/wash-cli/internal/notes"
-	"github.com/brinleekidd/wash-cli/internal/screenshot"
+	"github.com/brinleekidd/wash-cli/internal/chat"
 	"github.com/brinleekidd/wash-cli/pkg/config"
 	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"
 )
 
 var (
-	cfg *config.Config
+	cfg         *config.Config
+	chatMonitor *chat.ChatMonitor
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "wash",
-	Short: "Wash is a CLI tool for code analysis and optimization",
-	Long: `Wash is a command-line tool that helps analyze and optimize your code.
-It provides various commands to analyze files, project structure, and more.`,
+	Short: "Wash is a CLI tool for monitoring and analyzing Cursor chat interactions",
+	Long: `Wash is a command-line tool that helps monitor and analyze your interactions with Cursor's chat console.
+It can identify potential mistakes or misguidance in your chat history to help you understand where you might have gone wrong.`,
 }
 
-var analyzeFileCmd = &cobra.Command{
-	Use:   "analyze-file [file]",
+var fileCmd = &cobra.Command{
+	Use:   "file [file]",
 	Short: "Analyze a specific file for optimizations",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -46,8 +44,8 @@ var analyzeFileCmd = &cobra.Command{
 	},
 }
 
-var analyzeProjectCmd = &cobra.Command{
-	Use:   "analyze-project [directory]",
+var structureCmd = &cobra.Command{
+	Use:   "structure [directory]",
 	Short: "Analyze project structure and organization",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -65,46 +63,24 @@ var analyzeProjectCmd = &cobra.Command{
 	},
 }
 
-var analyzeChatCmd = &cobra.Command{
-	Use:   "analyze-chat [file]",
+var chatSummaryCmd = &cobra.Command{
+	Use:   "chat summary",
 	Short: "Analyze chat history and provide insights",
-	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		filePath := args[0]
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			fmt.Printf("Error reading chat file: %v\n", err)
-			os.Exit(1)
-		}
-
 		client := openai.NewClient(cfg.OpenAIKey)
 		analyzer := analyzer.NewAnalyzer(client)
 
-		result, err := analyzer.AnalyzeChat(context.Background(), string(content))
+		// Read the chat analysis file
+		notesDir := filepath.Join(os.Getenv("HOME"), ".wash", "notes")
+		analysisPath := filepath.Join(notesDir, "chat_analysis.txt")
+
+		content, err := os.ReadFile(analysisPath)
 		if err != nil {
-			fmt.Printf("Error analyzing chat: %v\n", err)
+			fmt.Printf("Error reading chat analysis file: %v\n", err)
 			os.Exit(1)
 		}
 
-		fmt.Println(result)
-	},
-}
-
-var analyzeChatSummaryCmd = &cobra.Command{
-	Use:   "analyze-chat-summary [file]",
-	Short: "Analyze chat history summary and provide insights",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		filePath := args[0]
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			fmt.Printf("Error reading summary file: %v\n", err)
-			os.Exit(1)
-		}
-
-		client := openai.NewClient(cfg.OpenAIKey)
-		analyzer := analyzer.NewAnalyzer(client)
-
+		// Get a summary of the analysis
 		result, err := analyzer.AnalyzeChatSummary(context.Background(), string(content))
 		if err != nil {
 			fmt.Printf("Error analyzing chat summary: %v\n", err)
@@ -115,94 +91,41 @@ var analyzeChatSummaryCmd = &cobra.Command{
 	},
 }
 
-var monitorCmd = &cobra.Command{
-	Use:   "monitor [paths...]",
-	Short: "Monitor files and directories for changes",
-	Args:  cobra.MinimumNArgs(1),
+var startChatCmd = &cobra.Command{
+	Use:   "start chat",
+	Short: "Start monitoring Cursor chat console",
 	Run: func(cmd *cobra.Command, args []string) {
-		monitor, err := monitor.NewMonitor(args)
+		var err error
+		chatMonitor, err = chat.NewChatMonitor(cfg)
 		if err != nil {
-			fmt.Printf("Error creating monitor: %v\n", err)
+			fmt.Printf("Error creating chat monitor: %v\n", err)
 			os.Exit(1)
 		}
 
-		if err := monitor.Start(); err != nil {
-			fmt.Printf("Error starting monitor: %v\n", err)
+		if err := chatMonitor.Start(); err != nil {
+			fmt.Printf("Error starting chat monitor: %v\n", err)
 			os.Exit(1)
 		}
-		defer monitor.Stop()
 
-		// Handle graceful shutdown
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-		fmt.Println("Monitoring files... Press Ctrl+C to stop")
-		for {
-			select {
-			case event := <-monitor.Events():
-				fmt.Printf("[%s] %s: %s\n", event.Timestamp.Format("2006-01-02 15:04:05"), event.Type, event.Path)
-			case <-sigChan:
-				return
-			}
-		}
+		fmt.Println("Chat monitoring started. Press Ctrl+C to stop.")
 	},
 }
 
-var screenshotCmd = &cobra.Command{
-	Use:   "screenshot [display]",
-	Short: "Capture a screenshot of the specified display",
-	Args:  cobra.ExactArgs(1),
+var stopChatCmd = &cobra.Command{
+	Use:   "stop chat",
+	Short: "Stop monitoring Cursor chat console",
 	Run: func(cmd *cobra.Command, args []string) {
-		displayIndex := 0
-		if _, err := fmt.Sscanf(args[0], "%d", &displayIndex); err != nil {
-			fmt.Printf("Invalid display index: %v\n", err)
-			os.Exit(1)
-		}
-
-		screenshot, err := screenshot.Capture(displayIndex)
-		if err != nil {
-			fmt.Printf("Error capturing screenshot: %v\n", err)
-			os.Exit(1)
-		}
-
-		fmt.Printf("Screenshot saved to: %s\n", screenshot.Path)
-	},
-}
-
-var noteCmd = &cobra.Command{
-	Use:   "note [content]",
-	Short: "Create a new note",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		note, err := notes.NewNote(args[0])
-		if err != nil {
-			fmt.Printf("Error creating note: %v\n", err)
-			os.Exit(1)
-		}
-
-		fmt.Printf("Note created at: %s\n", note.Path)
-	},
-}
-
-var listNotesCmd = &cobra.Command{
-	Use:   "list-notes",
-	Short: "List all notes",
-	Run: func(cmd *cobra.Command, args []string) {
-		notePaths, err := notes.ListNotes()
-		if err != nil {
-			fmt.Printf("Error listing notes: %v\n", err)
-			os.Exit(1)
-		}
-
-		if len(notePaths) == 0 {
-			fmt.Println("No notes found")
+		if chatMonitor == nil {
+			fmt.Println("Chat monitor is not running")
 			return
 		}
 
-		fmt.Println("Notes:")
-		for _, path := range notePaths {
-			fmt.Printf("- %s\n", path)
+		if err := chatMonitor.Stop(); err != nil {
+			fmt.Printf("Error stopping chat monitor: %v\n", err)
+			os.Exit(1)
 		}
+
+		fmt.Println("Chat monitoring stopped")
 	},
 }
 
@@ -214,14 +137,11 @@ func init() {
 		os.Exit(1)
 	}
 
-	rootCmd.AddCommand(analyzeFileCmd)
-	rootCmd.AddCommand(analyzeProjectCmd)
-	rootCmd.AddCommand(analyzeChatCmd)
-	rootCmd.AddCommand(analyzeChatSummaryCmd)
-	rootCmd.AddCommand(monitorCmd)
-	rootCmd.AddCommand(screenshotCmd)
-	rootCmd.AddCommand(noteCmd)
-	rootCmd.AddCommand(listNotesCmd)
+	rootCmd.AddCommand(fileCmd)
+	rootCmd.AddCommand(structureCmd)
+	rootCmd.AddCommand(chatSummaryCmd)
+	rootCmd.AddCommand(startChatCmd)
+	rootCmd.AddCommand(stopChatCmd)
 }
 
 func main() {
