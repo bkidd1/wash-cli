@@ -20,6 +20,12 @@ builds:
         goarm: 7
       - goos: windows
         goarch: arm64
+    main: ./cmd/wash/main.go
+    binary: wash
+    ldflags:
+      - -s -w -X github.com/brinleekidd/wash-cli/pkg/version.Version={{.Version}}
+      - -X github.com/brinleekidd/wash-cli/pkg/version.BuildDate={{.Date}}
+      - -X github.com/brinleekidd/wash-cli/pkg/version.GitCommit={{.Commit}}
 
 archives:
   - format: tar.gz
