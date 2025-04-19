@@ -2,36 +2,28 @@
 
 Wash is a powerful command-line tool designed to help developers analyze, optimize, and monitor their code. It provides a suite of tools for code analysis, file monitoring, screenshot capture, and note-taking.
 
-## Features
-
-- **Code Analysis**
-  - Analyze individual files for optimizations and improvements
-  - Analyze project structure and organization
-  - Get detailed feedback on code quality, performance, and security
-  - Analyze chat history for key insights and actionable suggestions
-  - Analyze chat summaries for patterns and progress tracking
-
-- **File Monitoring**
-  - Monitor files and directories for changes
-  - Real-time notifications of file system events
-  - Support for recursive directory watching
-
-- **Screenshot Capture**
-  - Capture screenshots of specific displays
-  - Automatic timestamping and organization
-  - Support for multiple displays
-
-- **Note Taking**
-  - Create and manage markdown notes
-  - Automatic organization with timestamps
-  - List and view existing notes
-
 ## Installation
 
-### Prerequisites
+### Using Homebrew (macOS)
 
-- Go 1.16 or later
-- OpenAI API key (for code analysis features)
+```bash
+brew tap brinleekidd/tap
+brew install wash
+```
+
+### Using Binary Releases
+
+1. Download the appropriate binary for your platform from the [Releases](https://github.com/brinleekidd/wash-cli/releases) page.
+
+2. Make the binary executable:
+   ```bash
+   chmod +x wash
+   ```
+
+3. Move the binary to a directory in your PATH:
+   ```bash
+   sudo mv wash /usr/local/bin/
+   ```
 
 ### Building from Source
 
@@ -51,7 +43,7 @@ Wash is a powerful command-line tool designed to help developers analyze, optimi
    sudo mv wash /usr/local/bin/
    ```
 
-### Configuration
+## Configuration
 
 1. Create a configuration file at `~/.wash/wash.yaml`:
    ```yaml
@@ -74,40 +66,21 @@ Analyze project structure:
 wash analyze-project path/to/project
 ```
 
-Analyze chat history:
+### Chat Monitoring
+
+Start chat monitoring:
 ```bash
-wash analyze-chat path/to/chat.txt
+wash chat start
 ```
 
-The chat analysis provides:
-- Key discussion points and decisions
-- Actionable suggestions for code improvements
-- Communication patterns and improvements
-- Progress tracking and next steps
-
-Analyze chat summary:
+Stop chat monitoring:
 ```bash
-wash analyze-chat-summary path/to/summary.txt
+wash chat stop
 ```
-
-The chat summary analysis provides:
-- Key patterns and themes in the conversation
-- Communication strengths and areas for improvement
-- Actionable recommendations
-- Overall progress tracking
-
-### File Monitoring
-
-Monitor files and directories:
-```bash
-wash monitor path/to/directory path/to/file
-```
-
-Press Ctrl+C to stop monitoring.
 
 ### Screenshot Capture
 
-Capture a screenshot of a specific display:
+Capture a screenshot:
 ```bash
 wash screenshot 0  # Capture display 0
 ```
@@ -119,10 +92,41 @@ Create a new note:
 wash note "This is a new note"
 ```
 
-List all notes:
+### Version Information
+
+Check the version:
 ```bash
-wash list-notes
+wash version
 ```
+
+## Features
+
+- **Code Analysis**
+  - Analyze individual files for optimizations and improvements
+  - Analyze project structure and organization
+  - Get detailed feedback on code quality, performance, and security
+
+- **Chat Monitoring**
+  - Monitor and analyze chat interactions
+  - Generate insights and suggestions
+  - Track decisions and changes
+
+- **Screenshot Capture**
+  - Capture screenshots of specific displays
+  - Automatic timestamping and organization
+  - Support for multiple displays
+
+- **Note Taking**
+  - Create and manage markdown notes
+  - Automatic organization with timestamps
+  - List and view existing notes
+
+## Platform Support
+
+Wash supports the following platforms:
+- macOS (Intel and Apple Silicon)
+- Linux (amd64)
+- Windows (amd64)
 
 ## Directory Structure
 
