@@ -7,25 +7,24 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
+	"github.com/brinleekidd/wash-cli/internal/pid"
 	"github.com/brinleekidd/wash-cli/internal/screenshot"
 	"github.com/brinleekidd/wash-cli/pkg/config"
 	"github.com/sashabaranov/go-openai"
 )
 
 type ChatMonitor struct {
-	client    *openai.Client
-	cfg       *config.Config
-	isRunning bool
-	stopChan  chan struct{}
-	doneChan  chan struct{}
-	notesDir  string
-	startTime time.Time
-	pidFile   string
+	client     *openai.Client
+	cfg        *config.Config
+	isRunning  bool
+	stopChan   chan struct{}
+	doneChan   chan struct{}
+	notesDir   string
+	startTime  time.Time
+	pidManager *pid.PIDManager
 }
 
 func NewChatMonitor(cfg *config.Config) (*ChatMonitor, error) {
@@ -54,20 +53,17 @@ func NewChatMonitor(cfg *config.Config) (*ChatMonitor, error) {
 
 	// Set up PID file path (keep this in .wash for system files)
 	pidFile := filepath.Join(os.Getenv("HOME"), ".wash", "chat_monitor.pid")
-	// Ensure .wash directory exists for PID file
-	if err := os.MkdirAll(filepath.Dir(pidFile), 0755); err != nil {
-		return nil, fmt.Errorf("failed to create .wash directory: %v", err)
-	}
+	pidManager := pid.NewPIDManager(pidFile)
 
 	return &ChatMonitor{
-		client:    client,
-		cfg:       cfg,
-		isRunning: false,
-		stopChan:  make(chan struct{}),
-		doneChan:  make(chan struct{}),
-		notesDir:  notesDir,
-		startTime: time.Now(),
-		pidFile:   pidFile,
+		client:     client,
+		cfg:        cfg,
+		isRunning:  false,
+		stopChan:   make(chan struct{}),
+		doneChan:   make(chan struct{}),
+		notesDir:   notesDir,
+		startTime:  time.Now(),
+		pidManager: pidManager,
 	}, nil
 }
 
@@ -76,8 +72,8 @@ func (m *ChatMonitor) Start() error {
 		return fmt.Errorf("chat monitor is already running")
 	}
 
-	// Check if another instance is running by checking PID file
-	if pid, err := m.checkRunningInstance(); err == nil && pid > 0 {
+	// Check if another instance is running using PID manager
+	if pid, err := m.pidManager.CheckRunning(); err == nil && pid > 0 {
 		return fmt.Errorf("chat monitor is already running (PID: %d)", pid)
 	}
 
@@ -112,12 +108,11 @@ func (m *ChatMonitor) Start() error {
 	}
 	fmt.Printf("Created analysis file: %s\n", headerPath)
 
-	// Write PID file with just the PID number
-	pid := os.Getpid()
-	if err := os.WriteFile(m.pidFile, []byte(fmt.Sprintf("%d\n", pid)), 0644); err != nil {
+	// Write PID file using PID manager
+	if err := m.pidManager.WritePID(); err != nil {
 		return fmt.Errorf("failed to write PID file: %v", err)
 	}
-	fmt.Printf("Wrote PID file: %s (PID: %d)\n", m.pidFile, pid)
+	fmt.Printf("Wrote PID file (PID: %d)\n", os.Getpid())
 
 	// Set up signal handling for cleanup
 	sigChan := make(chan os.Signal, 1)
@@ -132,59 +127,10 @@ func (m *ChatMonitor) Start() error {
 	m.isRunning = true
 	go m.monitorLoop()
 	fmt.Println("Chat monitor started successfully")
+
+	// Wait for the monitor loop to complete
+	<-m.doneChan
 	return nil
-}
-
-func (m *ChatMonitor) checkRunningInstance() (int, error) {
-	// Check if PID file exists
-	if _, err := os.Stat(m.pidFile); os.IsNotExist(err) {
-		fmt.Println("Debug: PID file does not exist")
-		return 0, nil
-	}
-
-	// Read PID from file
-	pidBytes, err := os.ReadFile(m.pidFile)
-	if err != nil {
-		fmt.Printf("Debug: Failed to read PID file: %v\n", err)
-		// Can't read PID file, assume no running instance
-		os.Remove(m.pidFile)
-		return 0, nil
-	}
-
-	// Clean up the PID string and convert to integer
-	pidStr := string(pidBytes)
-	pidStr = strings.TrimSpace(pidStr)
-	pidStr = strings.TrimSuffix(pidStr, "%")
-	fmt.Printf("Debug: Read PID string: '%s'\n", pidStr)
-
-	pid, err := strconv.Atoi(pidStr)
-	if err != nil {
-		fmt.Printf("Debug: Invalid PID format: %v\n", err)
-		// Invalid PID in file, clean up
-		os.Remove(m.pidFile)
-		return 0, nil
-	}
-	fmt.Printf("Debug: Converted PID: %d\n", pid)
-
-	// Check if process exists and is running
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		fmt.Printf("Debug: Process not found: %v\n", err)
-		// Process not found, clean up
-		os.Remove(m.pidFile)
-		return 0, nil
-	}
-
-	// On Unix systems, FindProcess always succeeds, so we need to check if the process is actually running
-	if err := process.Signal(syscall.Signal(0)); err != nil {
-		fmt.Printf("Debug: Process not running: %v\n", err)
-		// Process not running, clean up
-		os.Remove(m.pidFile)
-		return 0, nil
-	}
-
-	fmt.Printf("Debug: Found running process with PID %d\n", pid)
-	return pid, nil
 }
 
 func (m *ChatMonitor) cleanup() {
@@ -194,15 +140,15 @@ func (m *ChatMonitor) cleanup() {
 		close(m.doneChan)
 	}
 
-	// Remove PID file if it belongs to us
-	if pid, err := m.checkRunningInstance(); err == nil && pid == os.Getpid() {
-		os.Remove(m.pidFile)
+	// Clean up PID file using PID manager
+	if err := m.pidManager.Cleanup(); err != nil {
+		fmt.Printf("Warning: failed to cleanup PID file: %v\n", err)
 	}
 }
 
 func (m *ChatMonitor) Stop() error {
-	// Check if process is running
-	pid, err := m.checkRunningInstance()
+	// Check if process is running using PID manager
+	pid, err := m.pidManager.CheckRunning()
 	if err != nil || pid == 0 {
 		return fmt.Errorf("chat monitor is not running")
 	}
@@ -226,9 +172,9 @@ func (m *ChatMonitor) Stop() error {
 	// Wait a moment for the process to clean up
 	time.Sleep(100 * time.Millisecond)
 
-	// Clean up PID file if it still exists
-	if _, err := os.Stat(m.pidFile); err == nil {
-		os.Remove(m.pidFile)
+	// Clean up PID file using PID manager
+	if err := m.pidManager.Cleanup(); err != nil {
+		fmt.Printf("Warning: failed to cleanup PID file: %v\n", err)
 	}
 
 	fmt.Println("Chat monitor stopped successfully")

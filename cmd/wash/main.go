@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/brinleekidd/wash-cli/cmd/wash/bug"
 	"github.com/brinleekidd/wash-cli/cmd/wash/chat"
 	"github.com/brinleekidd/wash-cli/cmd/wash/file"
-	"github.com/brinleekidd/wash-cli/cmd/wash/help"
 	"github.com/brinleekidd/wash-cli/cmd/wash/project"
 	"github.com/brinleekidd/wash-cli/cmd/wash/summary"
 	"github.com/spf13/cobra"
@@ -24,7 +24,11 @@ func initCommands() error {
 	rootCmd.AddCommand(project.Command())
 	rootCmd.AddCommand(chat.Command())
 	rootCmd.AddCommand(summary.Command())
-	rootCmd.AddCommand(help.Command())
+	rootCmd.AddCommand(bug.Command())
+
+	// Hide the default completion command as we don't need it
+	rootCmd.CompletionOptions.HiddenDefaultCmd = true
+
 	return nil
 }
 
