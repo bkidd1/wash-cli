@@ -24,9 +24,9 @@ builds:
     main: ./cmd/wash/main.go
     binary: wash
     ldflags:
-      - -s -w -X github.com/brinleekidd/wash-cli/pkg/version.Version={{.Version}}
-      - -X github.com/brinleekidd/wash-cli/pkg/version.BuildDate={{.Date}}
-      - -X github.com/brinleekidd/wash-cli/pkg/version.GitCommit={{.Commit}}
+      - -s -w -X github.com/bkidd1/wash-cli/pkg/version.Version={{.Version}}
+      - -X github.com/bkidd1/wash-cli/pkg/version.BuildDate={{.Date}}
+      - -X github.com/bkidd1/wash-cli/pkg/version.GitCommit={{.Commit}}
 
 archives:
   - format: tar.gz
@@ -57,13 +57,13 @@ changelog:
 
 brews:
   - repository:
-      owner: brinleekidd
+      owner: bkidd1
       name: homebrew-tap
       branch: main
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
-    homepage: "https://github.com/brinleekidd/wash-cli"
+    homepage: "https://github.com/bkidd1/wash-cli"
     description: "A development assistant that helps track errors, decisions, and project state"
     license: "MIT"
     install: |
