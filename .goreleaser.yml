@@ -56,11 +56,13 @@ changelog:
       - '^chore:'
 
 brews:
-  - name: wash
-    tap:
+  - repository:
       owner: brinleekidd
       name: homebrew-tap
-    folder: Formula
+      branch: main
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
     homepage: "https://github.com/brinleekidd/wash-cli"
     description: "A development assistant that helps track errors, decisions, and project state"
     license: "MIT"
