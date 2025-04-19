@@ -8,13 +8,13 @@ import (
 	"time"
 )
 
-// Note represents a single note
+// Note represents a single issue note
 type Note struct {
 	Path    string
 	Content string
 }
 
-// NewNote creates a new note with the given content
+// NewNote creates a new issue note with the given content
 func NewNote(content string) (*Note, error) {
 	// Get the current working directory to create project-specific path
 	cwd, err := os.Getwd()
@@ -48,17 +48,17 @@ func NewNote(content string) (*Note, error) {
 			issueType = strings.ReplaceAll(issueType, "/", "-")
 		}
 	}
-	filename := fmt.Sprintf("note-%s-%s.md", issueType, timestamp)
+	filename := fmt.Sprintf("issue-%s-%s.md", issueType, timestamp)
 	path := filepath.Join(dir, filename)
 
 	// Format the content with proper markdown structure
-	formattedContent := fmt.Sprintf("# Wash Analysis Note\n*Generated on %s*\n\n%s",
+	formattedContent := fmt.Sprintf("# Wash Issue Note\n*Generated on %s*\n\n%s",
 		time.Now().Format("2006-01-02 15:04:05"),
 		content)
 
-	// Create the note file
+	// Create the issue note file
 	if err := os.WriteFile(path, []byte(formattedContent), 0644); err != nil {
-		return nil, fmt.Errorf("failed to create note file: %w", err)
+		return nil, fmt.Errorf("failed to create issue note file: %w", err)
 	}
 
 	return &Note{
@@ -67,12 +67,12 @@ func NewNote(content string) (*Note, error) {
 	}, nil
 }
 
-// AppendToNote appends content to an existing note
+// AppendToNote appends content to an existing issue note
 func AppendToNote(path string, content string) error {
 	// Read existing content
 	existingContent, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("failed to read note file: %w", err)
+		return fmt.Errorf("failed to read issue note file: %w", err)
 	}
 
 	// Format the new content with a clear separator and timestamp
@@ -84,13 +84,13 @@ func AppendToNote(path string, content string) error {
 
 	// Write back to file
 	if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
-		return fmt.Errorf("failed to update note file: %w", err)
+		return fmt.Errorf("failed to update issue note file: %w", err)
 	}
 
 	return nil
 }
 
-// ListNotes returns a list of all notes in the notes directory
+// ListNotes returns a list of all issue notes in the notes directory
 func ListNotes() ([]string, error) {
 	// Get the current working directory to create project-specific path
 	cwd, err := os.Getwd()

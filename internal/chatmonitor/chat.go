@@ -299,5 +299,10 @@ Focus on suggesting better approaches than what was attempted, with clear benefi
 		return fmt.Errorf("failed to write analysis: %v", err)
 	}
 
+	// Delete the screenshot after analysis is complete
+	if err := os.Remove(screenshotPath); err != nil {
+		fmt.Printf("Warning: failed to delete screenshot: %v\n", err)
+	}
+
 	return nil
 }
