@@ -1,42 +1,19 @@
 package analyzer
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/brinleekidd/wash-cli/pkg/config"
 	"github.com/sashabaranov/go-openai"
 )
 
-// Analyzer represents a code analyzer
-type Analyzer struct {
-	client *openai.Client
-	apiKey string
-}
-
-// NewAnalyzer creates a new code analyzer
-func NewAnalyzer(apiKey string) *Analyzer {
-	client := openai.NewClient(apiKey)
-	return &Analyzer{
-		client: client,
-		apiKey: apiKey,
-	}
-}
-
-// AnalyzeFile analyzes a single file for potential optimizations and improvements
-func (a *Analyzer) AnalyzeFile(ctx context.Context, filePath string) (string, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", fmt.Errorf("error reading file: %w", err)
-	}
-
-	systemPrompt := `You are an expert software architect and Cursor AI assistant. Before suggesting any changes, carefully analyze the provided code and ask yourself:
+const (
+	systemPrompt = `You are an expert software architect and Cursor AI assistant. Before suggesting any changes, carefully analyze the provided code and ask yourself:
 
 1. Is the current implementation already optimal?
    - Does it follow best practices?
@@ -48,9 +25,34 @@ func (a *Analyzer) AnalyzeFile(ctx context.Context, filePath string) (string, er
    - Is the current solution actually the best approach?
    - Are there simpler alternatives that would work as well?
 
-If the current implementation is already optimal, acknowledge this and explain why. If changes are needed, provide clear, step-by-step instructions for Cursor's AI to implement improvements.`
+If the current implementation is already optimal, acknowledge this and explain why. If changes are needed, provide clear, step-by-step instructions for implementing improvements.`
+)
 
-	resp, err := a.client.CreateChatCompletion(
+// Analyzer represents a code analyzer
+type Analyzer struct {
+	Client *openai.Client
+	cfg    *config.Config
+}
+
+// NewAnalyzer creates a new code analyzer
+func NewAnalyzer(apiKey string) *Analyzer {
+	client := openai.NewClient(apiKey)
+	return &Analyzer{
+		Client: client,
+		cfg: &config.Config{
+			OpenAIKey: apiKey,
+		},
+	}
+}
+
+// AnalyzeFile analyzes a single file for potential optimizations and improvements
+func (a *Analyzer) AnalyzeFile(ctx context.Context, filePath string) (string, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("error reading file: %w", err)
+	}
+
+	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4,
@@ -70,7 +72,25 @@ If the current implementation is already optimal, acknowledge this and explain w
 		return "", fmt.Errorf("error getting analysis: %w", err)
 	}
 
-	return resp.Choices[0].Message.Content, nil
+	// Format the response as meeting notes
+	notes := fmt.Sprintf(`# Wash Meeting Notes - File Analysis
+*Generated on %s*
+
+## Key Insights
+%s
+
+## Action Items
+- [ ] Review and implement suggested improvements
+- [ ] Consider alternative approaches discussed
+- [ ] Document any successful strategies for future reference
+
+## Next Steps
+- [ ] Follow up on identified issues
+- [ ] Implement recommended changes
+- [ ] Schedule next review if needed
+`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
+
+	return notes, nil
 }
 
 // AnalyzeProjectStructure analyzes the project structure and suggests improvements
@@ -80,9 +100,15 @@ func (a *Analyzer) AnalyzeProjectStructure(ctx context.Context, dirPath string) 
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() {
+		if info.IsDir() {
+			// Skip common directories
+			if info.Name() == "node_modules" || info.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			fileList.WriteString(fmt.Sprintf("📁 %s\n", path))
+		} else {
 			relPath, _ := filepath.Rel(dirPath, path)
-			fileList.WriteString(fmt.Sprintf("- %s\n", relPath))
+			fileList.WriteString(fmt.Sprintf("  📄 %s\n", relPath))
 		}
 		return nil
 	})
@@ -90,22 +116,20 @@ func (a *Analyzer) AnalyzeProjectStructure(ctx context.Context, dirPath string) 
 		return "", fmt.Errorf("error walking directory: %w", err)
 	}
 
-	systemPrompt := `You are an expert software architect. Analyze the provided project structure and provide insights about:
-1. Overall project organization
-2. Potential improvements in file/directory structure
-3. Missing or redundant components
-4. Best practices and recommendations
-
-Format your response in a clear, structured way with sections for each aspect.`
-
-	resp, err := a.client.CreateChatCompletion(
+	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4,
 			Messages: []openai.ChatCompletionMessage{
 				{
-					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt,
+					Role: openai.ChatMessageRoleSystem,
+					Content: `You are an expert software architect. Analyze the provided project structure and provide insights about:
+1. Overall project organization
+2. Potential improvements in file/directory structure
+3. Missing or redundant components
+4. Best practices and recommendations
+
+Format your response in a clear, structured way with sections for each aspect.`,
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -161,7 +185,7 @@ Format your response as follows:
 2. [Follow-up action]
 3. [Long-term consideration]`
 
-	resp, err := a.client.CreateChatCompletion(
+	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4,
@@ -200,7 +224,7 @@ Format your response in a clear, structured way with these sections:
 - Actionable Recommendations
 - Overall Progress`
 
-	resp, err := a.client.CreateChatCompletion(
+	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4,
@@ -223,111 +247,7 @@ Format your response in a clear, structured way with these sections:
 	return resp.Choices[0].Message.Content, nil
 }
 
-func (a *Analyzer) analyzeChat(chatContent string) string {
-	// Create a more focused prompt for the AI
-	prompt := fmt.Sprintf(`Analyze the following chat interaction and provide a concise, actionable analysis focusing on better solutions than what was attempted. Format the response as follows:
-
-# Chat Analysis
-
-## Current Approach
-[1-2 sentences describing what the user is trying to do]
-
-## Better Solutions
-1. [Primary solution] - [1-2 sentence explanation]
-   - Key benefits: [bullet points]
-   - Implementation steps: [brief steps]
-
-2. [Alternative solution] - [1-2 sentence explanation]
-   - Key benefits: [bullet points]
-   - Implementation steps: [brief steps]
-
-## Technical Considerations
-- [Important technical detail 1]
-- [Important technical detail 2]
-
-## Best Practices
-- [Relevant best practice 1]
-- [Relevant best practice 2]
-
-Chat content:
-%s`, chatContent)
-
-	// Get analysis from AI
-	analysis, err := a.getAIResponse(prompt)
-	if err != nil {
-		return fmt.Sprintf("Error analyzing chat: %v", err)
-	}
-
-	return analysis
-}
-
-func (a *Analyzer) getAIResponse(prompt string) (string, error) {
-	// Create the request body
-	requestBody := map[string]interface{}{
-		"model": "gpt-4",
-		"messages": []map[string]string{
-			{
-				"role":    "system",
-				"content": "You are a helpful AI assistant that analyzes chat interactions and suggests better solutions.",
-			},
-			{
-				"role":    "user",
-				"content": prompt,
-			},
-		},
-		"temperature": 0.7,
-	}
-
-	// Convert request body to JSON
-	jsonBody, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", fmt.Errorf("error marshaling request body: %v", err)
-	}
-
-	// Create HTTP request
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return "", fmt.Errorf("error creating request: %v", err)
-	}
-
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+a.apiKey)
-
-	// Send request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("error sending request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading response body: %v", err)
-	}
-
-	// Parse response
-	var response struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return "", fmt.Errorf("error parsing response: %v", err)
-	}
-
-	if len(response.Choices) == 0 {
-		return "", fmt.Errorf("no response from AI")
-	}
-
-	return response.Choices[0].Message.Content, nil
-}
-
-// GetErrorFix analyzes chat history for specific error types and provides fix suggestions
+// GetErrorFix analyzes chat history for specific error patterns and provides solutions
 func (a *Analyzer) GetErrorFix(ctx context.Context, chatHistory string, errorType string) (string, error) {
 	systemPrompt := fmt.Sprintf(`You are an expert AI assistant analyzing chat history for error patterns and solutions. Your task is to:
 1. Look for instances of the error type: "%s"
@@ -353,7 +273,7 @@ Format your response as follows:
 
 If no specific instances of this error are found in the chat history, provide general best practices for handling similar errors.`, errorType, errorType)
 
-	resp, err := a.client.CreateChatCompletion(
+	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4,

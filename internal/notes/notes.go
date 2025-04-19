@@ -16,10 +16,23 @@ type Note struct {
 
 // NewNote creates a new note with the given content
 func NewNote(content string) (*Note, error) {
-	// Create notes directory if it doesn't exist
-	dir := filepath.Join(os.Getenv("HOME"), ".wash", "notes")
+	// Get the current working directory to create project-specific path
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Create project-specific notes directory in ~/.wash/projects/
+	projectPath := filepath.Base(cwd)
+	dir := filepath.Join(os.Getenv("HOME"), ".wash", "projects", projectPath, "notes")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create notes directory: %w", err)
+	}
+
+	// Create .gitignore in notes directory to prevent accidental commits
+	gitignorePath := filepath.Join(dir, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte("*\n"), 0644); err != nil {
+		return nil, fmt.Errorf("failed to create .gitignore: %w", err)
 	}
 
 	// Generate filename with timestamp and issue type
@@ -79,7 +92,16 @@ func AppendToNote(path string, content string) error {
 
 // ListNotes returns a list of all notes in the notes directory
 func ListNotes() ([]string, error) {
-	dir := filepath.Join(os.Getenv("HOME"), ".wash-notes")
+	// Get the current working directory to create project-specific path
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Get project-specific notes directory
+	projectPath := filepath.Base(cwd)
+	dir := filepath.Join(os.Getenv("HOME"), ".wash", "projects", projectPath, "notes")
+
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read notes directory: %w", err)
