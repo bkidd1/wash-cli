@@ -1,4 +1,4 @@
-package chat
+package monitor
 
 import (
 	"fmt"
@@ -6,17 +6,17 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/brinleekidd/wash-cli/internal/chatmonitor"
+	chatmonitor "github.com/brinleekidd/wash-cli/internal/monitor/chatmonitor"
 	"github.com/brinleekidd/wash-cli/pkg/config"
 	"github.com/spf13/cobra"
 )
 
-// Command creates the chat command with start and stop subcommands
+// Command creates the monitor command with start and stop subcommands
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "chat",
-		Short: "Monitor and analyze chat interactions",
-		Long:  "Monitor and analyze chat interactions for insights and improvements",
+		Use:   "monitor",
+		Short: "Monitor and analyze interactions",
+		Long:  "Monitor and analyze interactions for insights and improvements",
 	}
 
 	cmd.AddCommand(startCmd())
@@ -28,16 +28,16 @@ func Command() *cobra.Command {
 func startCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
-		Short: "Start chat monitoring",
+		Short: "Start monitoring",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.LoadConfig()
 			if err != nil {
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
-			monitor, err := chatmonitor.NewChatMonitor(cfg)
+			m, err := chatmonitor.NewMonitor(cfg)
 			if err != nil {
-				return fmt.Errorf("failed to create chat monitor: %w", err)
+				return fmt.Errorf("failed to create monitor: %w", err)
 			}
 
 			// Handle graceful shutdown
@@ -46,11 +46,11 @@ func startCmd() *cobra.Command {
 
 			go func() {
 				<-sigChan
-				monitor.Stop()
+				m.Stop()
 			}()
 
-			if err := monitor.Start(); err != nil {
-				return fmt.Errorf("failed to start chat monitor: %w", err)
+			if err := m.Start(); err != nil {
+				return fmt.Errorf("failed to start monitor: %w", err)
 			}
 
 			return nil
@@ -61,20 +61,20 @@ func startCmd() *cobra.Command {
 func stopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
-		Short: "Stop chat monitoring",
+		Short: "Stop monitoring",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.LoadConfig()
 			if err != nil {
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
-			monitor, err := chatmonitor.NewChatMonitor(cfg)
+			m, err := chatmonitor.NewMonitor(cfg)
 			if err != nil {
-				return fmt.Errorf("failed to create chat monitor: %w", err)
+				return fmt.Errorf("failed to create monitor: %w", err)
 			}
 
-			if err := monitor.Stop(); err != nil {
-				return fmt.Errorf("failed to stop chat monitor: %w", err)
+			if err := m.Stop(); err != nil {
+				return fmt.Errorf("failed to stop monitor: %w", err)
 			}
 
 			return nil

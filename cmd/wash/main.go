@@ -5,10 +5,9 @@ import (
 	"os"
 
 	"github.com/brinleekidd/wash-cli/cmd/wash/bug"
-	"github.com/brinleekidd/wash-cli/cmd/wash/chat"
 	"github.com/brinleekidd/wash-cli/cmd/wash/file"
+	"github.com/brinleekidd/wash-cli/cmd/wash/monitor"
 	"github.com/brinleekidd/wash-cli/cmd/wash/project"
-	"github.com/brinleekidd/wash-cli/cmd/wash/summary"
 	"github.com/brinleekidd/wash-cli/cmd/wash/version"
 	"github.com/spf13/cobra"
 )
@@ -23,8 +22,7 @@ func initCommands() error {
 	// Add commands
 	rootCmd.AddCommand(file.Command())
 	rootCmd.AddCommand(project.Command())
-	rootCmd.AddCommand(chat.Command())
-	rootCmd.AddCommand(summary.Command())
+	rootCmd.AddCommand(monitor.Command())
 	rootCmd.AddCommand(bug.Command())
 	rootCmd.AddCommand(version.Command())
 

@@ -1,4 +1,4 @@
-package chatmonitor
+package monitor
 
 import (
 	"context"
@@ -16,19 +16,20 @@ import (
 	"github.com/sashabaranov/go-openai"
 )
 
-type ChatMonitor struct {
+type Monitor struct {
 	client     *openai.Client
 	cfg        *config.Config
-	isRunning  bool
+	running    bool
 	stopChan   chan struct{}
 	doneChan   chan struct{}
 	notesDir   string
 	startTime  time.Time
 	pidManager *pid.PIDManager
+	pidFile    string
 }
 
-func NewChatMonitor(cfg *config.Config) (*ChatMonitor, error) {
-	fmt.Println("Creating new chat monitor...")
+func NewMonitor(cfg *config.Config) (*Monitor, error) {
+	fmt.Println("Creating new monitor...")
 	client := openai.NewClient(cfg.OpenAIKey)
 
 	// Get the current working directory to create project-specific path
@@ -55,29 +56,30 @@ func NewChatMonitor(cfg *config.Config) (*ChatMonitor, error) {
 	pidFile := filepath.Join(os.Getenv("HOME"), ".wash", "chat_monitor.pid")
 	pidManager := pid.NewPIDManager(pidFile)
 
-	return &ChatMonitor{
+	return &Monitor{
 		client:     client,
 		cfg:        cfg,
-		isRunning:  false,
+		running:    false,
 		stopChan:   make(chan struct{}),
 		doneChan:   make(chan struct{}),
 		notesDir:   notesDir,
 		startTime:  time.Now(),
 		pidManager: pidManager,
+		pidFile:    pidFile,
 	}, nil
 }
 
-func (m *ChatMonitor) Start() error {
-	if m.isRunning {
-		return fmt.Errorf("chat monitor is already running")
+func (m *Monitor) Start() error {
+	if m.running {
+		return fmt.Errorf("monitor is already running")
 	}
 
 	// Check if another instance is running using PID manager
 	if pid, err := m.pidManager.CheckRunning(); err == nil && pid > 0 {
-		return fmt.Errorf("chat monitor is already running (PID: %d)", pid)
+		return fmt.Errorf("monitor is already running (PID: %d)", pid)
 	}
 
-	fmt.Println("Starting chat monitor...")
+	fmt.Println("Starting monitor...")
 	// Create initial note file with header
 	headerPath := filepath.Join(m.notesDir, "chat_analysis.txt")
 	header := `# Chat Analysis
@@ -124,18 +126,18 @@ func (m *ChatMonitor) Start() error {
 		os.Exit(0)
 	}()
 
-	m.isRunning = true
+	m.running = true
 	go m.monitorLoop()
-	fmt.Println("Chat monitor started successfully")
+	fmt.Println("Monitor started successfully")
 
 	// Wait for the monitor loop to complete
 	<-m.doneChan
 	return nil
 }
 
-func (m *ChatMonitor) cleanup() {
-	if m.isRunning {
-		m.isRunning = false
+func (m *Monitor) cleanup() {
+	if m.running {
+		m.running = false
 		close(m.stopChan)
 		close(m.doneChan)
 	}
@@ -146,14 +148,18 @@ func (m *ChatMonitor) cleanup() {
 	}
 }
 
-func (m *ChatMonitor) Stop() error {
+func (m *Monitor) Stop() error {
+	if !m.running {
+		return fmt.Errorf("monitor is not running")
+	}
+
 	// Check if process is running using PID manager
 	pid, err := m.pidManager.CheckRunning()
 	if err != nil || pid == 0 {
-		return fmt.Errorf("chat monitor is not running")
+		return fmt.Errorf("monitor is not running")
 	}
 
-	fmt.Printf("Stopping chat monitor (PID: %d)...\n", pid)
+	fmt.Printf("Stopping monitor (PID: %d)...\n", pid)
 
 	// Get the process
 	process, err := os.FindProcess(pid)
@@ -177,11 +183,11 @@ func (m *ChatMonitor) Stop() error {
 		fmt.Printf("Warning: failed to cleanup PID file: %v\n", err)
 	}
 
-	fmt.Println("Chat monitor stopped successfully")
+	fmt.Println("Monitor stopped successfully")
 	return nil
 }
 
-func (m *ChatMonitor) monitorLoop() {
+func (m *Monitor) monitorLoop() {
 	fmt.Println("Starting monitor loop...")
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -195,14 +201,14 @@ func (m *ChatMonitor) monitorLoop() {
 			}
 		case <-m.stopChan:
 			fmt.Println("Received stop signal, exiting monitor loop")
-			m.isRunning = false
+			m.running = false
 			close(m.doneChan)
 			return
 		}
 	}
 }
 
-func (m *ChatMonitor) analyzeScreenshot() error {
+func (m *Monitor) analyzeScreenshot() error {
 	// Take a screenshot
 	screenshotPath := filepath.Join(m.notesDir, "latest_screenshot.png")
 	if err := screenshot.CaptureWindow("Cursor", screenshotPath); err != nil {
@@ -241,21 +247,7 @@ func (m *ChatMonitor) analyzeScreenshot() error {
    - Implementation steps: [brief steps]
 
 ## Error Tracking
-- [Error Type]: [Brief description of the error]
-  - Root Cause: [Why the error occurs]
-  - Solution: [How to fix it]
-  - Prevention: [How to avoid it in the future]
-  - Command: [The command to fix it, if applicable]
-
-## Technical Considerations
-- [Important technical detail 1]
-- [Important technical detail 2]
-
-## Best Practices
-- [Relevant best practice 1]
-- [Relevant best practice 2]
-
-Focus on suggesting better approaches than what was attempted, with clear benefits and implementation steps.`,
+- [Error Type]: [Brief description of the error]`,
 			},
 			{
 				Role: openai.ChatMessageRoleUser,
@@ -273,13 +265,17 @@ Focus on suggesting better approaches than what was attempted, with clear benefi
 				},
 			},
 		},
-		MaxTokens: 1000,
 	}
 
-	// Get the analysis from OpenAI
+	// Get the analysis
 	resp, err := m.client.CreateChatCompletion(context.Background(), req)
 	if err != nil {
 		return fmt.Errorf("failed to get analysis: %v", err)
+	}
+
+	// Delete the screenshot after we have the analysis
+	if err := os.Remove(screenshotPath); err != nil {
+		return fmt.Errorf("failed to delete screenshot: %v", err)
 	}
 
 	// Append the analysis to the notes file with a timestamp
@@ -287,7 +283,7 @@ Focus on suggesting better approaches than what was attempted, with clear benefi
 	analysis := resp.Choices[0].Message.Content
 
 	// Open file in append mode
-	f, err := os.OpenFile(analysisPath, os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(analysisPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open analysis file: %v", err)
 	}
@@ -297,11 +293,6 @@ Focus on suggesting better approaches than what was attempted, with clear benefi
 	timestamp := time.Now().Format("1/2/2006, 3:04:05 PM")
 	if _, err := f.WriteString(fmt.Sprintf("\n\n### Analysis at %s\n\n%s\n", timestamp, analysis)); err != nil {
 		return fmt.Errorf("failed to write analysis: %v", err)
-	}
-
-	// Delete the screenshot after analysis is complete
-	if err := os.Remove(screenshotPath); err != nil {
-		fmt.Printf("Warning: failed to delete screenshot: %v\n", err)
 	}
 
 	return nil

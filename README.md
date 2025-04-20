@@ -66,16 +66,16 @@ Analyze project structure:
 wash analyze-project path/to/project
 ```
 
-### Chat Monitoring
+### Monitor Interactions
 
-Start chat monitoring:
+Start monitoring:
 ```bash
-wash chat start
+wash monitor start
 ```
 
-Stop chat monitoring:
+Stop monitoring:
 ```bash
-wash chat stop
+wash monitor stop
 ```
 
 ### Screenshot Capture
@@ -106,10 +106,8 @@ wash version
   - Analyze project structure and organization
   - Get detailed feedback on code quality, performance, and security
 
-- **Chat Monitoring**
-  - Monitor and analyze chat interactions
-  - Generate insights and suggestions
-  - Track decisions and changes
+- **Monitor Interactions**
+  - Monitor and analyze interactions
 
 - **Screenshot Capture**
   - Capture screenshots of specific displays
