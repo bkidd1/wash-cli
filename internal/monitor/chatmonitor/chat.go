@@ -1,4 +1,4 @@
-package monitor
+package chatmonitor
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/brinleekidd/wash-cli/internal/pid"
-	"github.com/brinleekidd/wash-cli/internal/screenshot"
-	"github.com/brinleekidd/wash-cli/pkg/config"
+	"github.com/bkidd1/wash-cli/internal/pid"
+	"github.com/bkidd1/wash-cli/internal/screenshot"
+	"github.com/bkidd1/wash-cli/pkg/config"
 	"github.com/sashabaranov/go-openai"
 )
 

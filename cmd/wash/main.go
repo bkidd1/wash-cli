@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/brinleekidd/wash-cli/cmd/wash/bug"
-	"github.com/brinleekidd/wash-cli/cmd/wash/file"
-	"github.com/brinleekidd/wash-cli/cmd/wash/monitor"
-	"github.com/brinleekidd/wash-cli/cmd/wash/project"
-	"github.com/brinleekidd/wash-cli/cmd/wash/version"
+	"github.com/bkidd1/wash-cli/cmd/wash/bug"
+	"github.com/bkidd1/wash-cli/cmd/wash/file"
+	"github.com/bkidd1/wash-cli/cmd/wash/monitor"
+	"github.com/bkidd1/wash-cli/cmd/wash/project"
+	"github.com/bkidd1/wash-cli/cmd/wash/version"
 	"github.com/spf13/cobra"
 )
 

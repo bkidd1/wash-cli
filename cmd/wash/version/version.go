@@ -3,7 +3,7 @@ package version
 import (
 	"fmt"
 
-	"github.com/brinleekidd/wash-cli/pkg/version"
+	"github.com/bkidd1/wash-cli/pkg/version"
 	"github.com/spf13/cobra"
 )
 

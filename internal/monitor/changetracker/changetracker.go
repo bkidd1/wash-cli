@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/brinleekidd/wash-cli/internal/analyzer"
-	"github.com/brinleekidd/wash-cli/internal/notes"
+	"github.com/bkidd1/wash-cli/internal/analyzer"
+	"github.com/bkidd1/wash-cli/internal/notes"
 	"github.com/fsnotify/fsnotify"
 )
 

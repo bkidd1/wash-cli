@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brinleekidd/wash-cli/pkg/config"
+	"github.com/bkidd1/wash-cli/pkg/config"
 	"github.com/sashabaranov/go-openai"
 )
 

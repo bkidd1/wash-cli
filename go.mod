@@ -1,9 +1,10 @@
-module github.com/brinleekidd/wash-cli
+module github.com/bkidd1/wash-cli
 
 go 1.24.2
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/google/uuid v1.6.0
 	github.com/kbinani/screenshot v0.0.0-20250118074034-a3924b7bbc8c
 	github.com/sashabaranov/go-openai v1.24.0
 	github.com/spf13/cobra v1.9.1
@@ -15,7 +16,6 @@ require (
 	github.com/gen2brain/shm v0.1.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jezek/xgb v1.1.1 // indirect
 	github.com/lxn/win v0.0.0-20210218163916-a377121e959e // indirect

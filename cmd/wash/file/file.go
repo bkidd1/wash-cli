@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/brinleekidd/wash-cli/internal/analyzer"
-	"github.com/brinleekidd/wash-cli/pkg/config"
+	"github.com/bkidd1/wash-cli/internal/analyzer"
+	"github.com/bkidd1/wash-cli/pkg/config"
 	"github.com/spf13/cobra"
 )
 

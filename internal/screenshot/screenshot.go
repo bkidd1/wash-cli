@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/brinleekidd/wash-cli/pkg/platform"
+	"github.com/bkidd1/wash-cli/pkg/platform"
 	"github.com/kbinani/screenshot"
 )
 

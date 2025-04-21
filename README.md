@@ -7,13 +7,13 @@ Wash is a powerful command-line tool designed to help developers analyze, optimi
 ### Using Homebrew (macOS)
 
 ```bash
-brew tap brinleekidd/tap
+brew tap bkidd1/tap
 brew install wash
 ```
 
 ### Using Binary Releases
 
-1. Download the appropriate binary for your platform from the [Releases](https://github.com/brinleekidd/wash-cli/releases) page.
+1. Download the appropriate binary for your platform from the [Releases](https://github.com/bkidd1/wash-cli/releases) page.
 
 2. Make the binary executable:
    ```bash
@@ -29,7 +29,7 @@ brew install wash
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/brinleekidd/wash-cli.git
+   git clone https://github.com/bkidd1/wash-cli.git
    cd wash-cli
    ```
 
