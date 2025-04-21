@@ -86,8 +86,14 @@ ehthumbs.db
 Thumbs.db
 
 # Binary
+/wash
 wash
 
 # Generated directories
 washnotes/
 .wash-notes/
+
+# Ignore build output but track source
+cmd/wash/*.exe
+cmd/wash/*.test
+cmd/wash/*.out
