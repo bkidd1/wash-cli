@@ -52,8 +52,8 @@ This command provides an overview of your project's recent activity.`,
 				if time.Since(interaction.Timestamp) <= 24*time.Hour {
 					fmt.Printf("[%s] %s: %s\n",
 						interaction.Timestamp.Format(time.RFC3339),
-						interaction.Type,
-						interaction.Content.UserInput)
+						interaction.Context.CurrentState,
+						interaction.Analysis.CurrentApproach)
 				}
 			}
 

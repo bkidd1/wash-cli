@@ -173,18 +173,20 @@ func (et *EventTracker) handleEvent(event fsnotify.Event) {
 	interaction := &notes.Interaction{
 		Timestamp:   time.Now(),
 		ProjectName: filepath.Base(et.projectPath),
-		Type:        notes.InteractionTypeCode,
-		Content: struct {
-			UserInput   string             `json:"user_input,omitempty"`
-			AIResponse  string             `json:"ai_response,omitempty"`
-			CodeChanges []notes.CodeChange `json:"code_changes,omitempty"`
+		Context: struct {
+			CurrentState string   `json:"current_state"`
+			FilesChanged []string `json:"files_changed,omitempty"`
 		}{
-			CodeChanges: []notes.CodeChange{
-				{
-					File:        event.Name,
-					Description: analysis,
-				},
-			},
+			CurrentState: "Code change detected",
+			FilesChanged: []string{event.Name},
+		},
+		Analysis: struct {
+			CurrentApproach string   `json:"current_approach"`
+			Issues          []string `json:"issues,omitempty"`
+			Solutions       []string `json:"solutions,omitempty"`
+			BestPractices   []string `json:"best_practices,omitempty"`
+		}{
+			CurrentApproach: analysis,
 		},
 	}
 
