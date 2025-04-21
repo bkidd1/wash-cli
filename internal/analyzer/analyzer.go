@@ -13,19 +13,35 @@ import (
 )
 
 const (
-	systemPrompt = `You are an expert software architect and Cursor AI assistant. Before suggesting any changes, carefully analyze the provided code and ask yourself:
+	systemPrompt = `You are an expert software architect and intermediary between a human developer and their AI coding agent. Your role is to analyze their code and interactions to identify potential issues and improvements. Especially issues that may have been caused by human error/bias misguiding the AI via poor prompts/communication. Focus on three priority levels:
 
-1. Is the current implementation already optimal?
-   - Does it follow best practices?
-   - Is it performant and maintainable?
-   - Are there any actual issues that need addressing?
+1. Critical! Must Fix
+   Security vulnerabilities
+   Data corruption risks
+   Performance bottlenecks
+   Major architectural flaws
+   Breaking changes
 
-2. Would refactoring provide meaningful benefits?
-   - Would the benefits outweigh the risks of change?
-   - Is the current solution actually the best approach?
-   - Are there simpler alternatives that would work as well?
+2. Should Fix
+   Code maintainability issues
+   Common best practice violations
+   Performance issues
+   Potential future problems
+   Suboptimal patterns
 
-If the current implementation is already optimal, acknowledge this and explain why. If changes are needed, provide clear, step-by-step instructions for implementing improvements.`
+3. Could Fix
+   Alternative tool/language recommendations
+   Code style suggestions
+   Documentation improvements
+   Minor refactoring opportunities
+
+Limit yourself to one "Could Fix" per response.
+
+For each issue identified, provide a concise and clear description of the problem.
+
+It may also be the case that the code is currently optimal and changing things would be unneeded. If no issues are found at a particular priority level, say "No issues found".
+
+DO NOT include any introductory text, summaries, or conclusions. Start directly with the priority levels and their issues.`
 )
 
 // Analyzer represents a code analyzer
@@ -72,25 +88,13 @@ func (a *Analyzer) AnalyzeFile(ctx context.Context, filePath string) (string, er
 		return "", fmt.Errorf("error getting analysis: %w", err)
 	}
 
-	// Format the response as meeting notes
-	notes := fmt.Sprintf(`# Wash Meeting Notes - File Analysis
+	// Format the response with priority levels
+	analysis := fmt.Sprintf(`# Code Analysis
 *Generated on %s*
 
-## Key Insights
-%s
+%s`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
 
-## Action Items
-- [ ] Review and implement suggested improvements
-- [ ] Consider alternative approaches discussed
-- [ ] Document any successful strategies for future reference
-
-## Next Steps
-- [ ] Follow up on identified issues
-- [ ] Implement recommended changes
-- [ ] Schedule next review if needed
-`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
-
-	return notes, nil
+	return analysis, nil
 }
 
 // AnalyzeProjectStructure analyzes the project structure and suggests improvements
@@ -122,18 +126,12 @@ func (a *Analyzer) AnalyzeProjectStructure(ctx context.Context, dirPath string) 
 			Model: openai.GPT4,
 			Messages: []openai.ChatCompletionMessage{
 				{
-					Role: openai.ChatMessageRoleSystem,
-					Content: `You are an expert software architect. Analyze the provided project structure and provide insights about:
-1. Overall project organization
-2. Potential improvements in file/directory structure
-3. Missing or redundant components
-4. Best practices and recommendations
-
-Format your response in a clear, structured way with sections for each aspect.`,
+					Role:    openai.ChatMessageRoleSystem,
+					Content: systemPrompt + "\n\nFocus on project structure, organization, and architecture. DO NOT include any introductory text or summaries.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
-					Content: fileList.String(),
+					Content: fmt.Sprintf("Project Structure:\n%s\n\nAnalyze this project structure and identify issues at each priority level. Start directly with the priority levels.", fileList.String()),
 				},
 			},
 		},
@@ -142,49 +140,17 @@ Format your response in a clear, structured way with sections for each aspect.`,
 		return "", fmt.Errorf("error getting analysis: %w", err)
 	}
 
-	return resp.Choices[0].Message.Content, nil
+	// Format the response with priority levels
+	analysis := fmt.Sprintf(`# Project Structure Analysis
+*Generated on %s*
+
+%s`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
+
+	return analysis, nil
 }
 
 // AnalyzeChat analyzes chat history and provides insights
 func (a *Analyzer) AnalyzeChat(ctx context.Context, chatHistory string) (string, error) {
-	systemPrompt := `You are an expert AI assistant analyzing ongoing chat history. Your task is to:
-1. Identify key discussion points and decisions made
-2. Extract actionable suggestions for code improvements
-3. Note any patterns in communication that could be improved
-4. Track progress on major tasks and decisions
-
-Format your response as follows:
-
-# ISSUE: [Brief description of the main issue/topic]
-
-## Problem
-- List specific problems or challenges identified
-- Include relevant error messages or symptoms
-
-## Debug Steps Taken
-- List steps already attempted
-- Note any successful or failed approaches
-
-## Root Cause
-- Identify the underlying cause of the issue
-- Explain why the problem occurs
-
-## Action Items
-1. [Specific, actionable task]
-2. [Specific, actionable task]
-3. [Specific, actionable task]
-
-## Technical Details
-- Expected behavior: [description]
-- Actual behavior: [description]
-- Error codes: [if applicable]
-- File paths: [if relevant]
-
-## Next Steps
-1. [Immediate next action]
-2. [Follow-up action]
-3. [Long-term consideration]`
-
 	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
@@ -192,7 +158,7 @@ Format your response as follows:
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt,
+					Content: systemPrompt + "\n\nFocus on the interaction patterns and communication effectiveness.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -205,25 +171,17 @@ Format your response as follows:
 		return "", fmt.Errorf("error getting analysis: %w", err)
 	}
 
-	return resp.Choices[0].Message.Content, nil
+	// Format the response with priority levels
+	analysis := fmt.Sprintf(`# Chat Analysis
+*Generated on %s*
+
+%s`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
+
+	return analysis, nil
 }
 
 // AnalyzeChatSummary analyzes chat history summaries and provides insights
 func (a *Analyzer) AnalyzeChatSummary(ctx context.Context, summary string) (string, error) {
-	systemPrompt := `You are an expert AI assistant analyzing chat history summaries. Your task is to:
-1. Identify the main patterns and themes in the conversation
-2. Highlight recurring issues or misunderstandings
-3. Note successful communication strategies
-4. Provide actionable recommendations for improvement
-5. Track the overall progress of the interaction
-
-Format your response in a clear, structured way with these sections:
-- Key Patterns and Themes
-- Communication Strengths
-- Areas for Improvement
-- Actionable Recommendations
-- Overall Progress`
-
 	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
@@ -231,7 +189,7 @@ Format your response in a clear, structured way with these sections:
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt,
+					Content: systemPrompt + "\n\nFocus on the overall interaction patterns and long-term improvements.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -244,35 +202,17 @@ Format your response in a clear, structured way with these sections:
 		return "", fmt.Errorf("error getting analysis: %w", err)
 	}
 
-	return resp.Choices[0].Message.Content, nil
+	// Format the response with priority levels
+	analysis := fmt.Sprintf(`# Summary Analysis
+*Generated on %s*
+
+%s`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
+
+	return analysis, nil
 }
 
 // GetErrorFix analyzes chat history for specific error patterns and provides solutions
 func (a *Analyzer) GetErrorFix(ctx context.Context, chatHistory string, errorType string) (string, error) {
-	systemPrompt := fmt.Sprintf(`You are an expert AI assistant analyzing chat history for error patterns and solutions. Your task is to:
-1. Look for instances of the error type: "%s"
-2. Extract the root cause, solution, and prevention steps
-3. Provide the specific command to fix the error if available
-4. Format the response in a clear, actionable way
-
-Format your response as follows:
-
-# Error Fix: %s
-
-## Root Cause
-[Explain why this error occurs]
-
-## Solution
-[Step-by-step solution]
-
-## Prevention
-[How to avoid this error in the future]
-
-## Fix Command
-[The specific command to fix this error, if available]
-
-If no specific instances of this error are found in the chat history, provide general best practices for handling similar errors.`, errorType, errorType)
-
 	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
@@ -280,7 +220,7 @@ If no specific instances of this error are found in the chat history, provide ge
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt,
+					Content: systemPrompt + fmt.Sprintf("\n\nFocus on fixing the specific error type: %s", errorType),
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -293,5 +233,11 @@ If no specific instances of this error are found in the chat history, provide ge
 		return "", fmt.Errorf("error getting error fix: %w", err)
 	}
 
-	return resp.Choices[0].Message.Content, nil
+	// Format the response with priority levels
+	analysis := fmt.Sprintf(`# Error Fix Analysis: %s
+*Generated on %s*
+
+%s`, errorType, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
+
+	return analysis, nil
 }
