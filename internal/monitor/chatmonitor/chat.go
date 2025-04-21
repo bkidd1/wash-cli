@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bkidd1/wash-cli/internal/notes"
 	"github.com/bkidd1/wash-cli/internal/pid"
 	"github.com/bkidd1/wash-cli/internal/screenshot"
 	"github.com/bkidd1/wash-cli/pkg/config"
@@ -17,15 +18,16 @@ import (
 )
 
 type Monitor struct {
-	client     *openai.Client
-	cfg        *config.Config
-	running    bool
-	stopChan   chan struct{}
-	doneChan   chan struct{}
-	notesDir   string
-	startTime  time.Time
-	pidManager *pid.PIDManager
-	pidFile    string
+	client         *openai.Client
+	cfg            *config.Config
+	running        bool
+	stopChan       chan struct{}
+	doneChan       chan struct{}
+	notesDir       string
+	startTime      time.Time
+	pidManager     *pid.PIDManager
+	pidFile        string
+	sessionManager *notes.SessionManager
 }
 
 func NewMonitor(cfg *config.Config) (*Monitor, error) {
@@ -55,16 +57,23 @@ func NewMonitor(cfg *config.Config) (*Monitor, error) {
 	pidFile := filepath.Join(os.Getenv("HOME"), ".wash", "chat_monitor.pid")
 	pidManager := pid.NewPIDManager(pidFile)
 
+	// Initialize session manager
+	sessionManager, err := notes.NewSessionManager(notesDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session manager: %v", err)
+	}
+
 	return &Monitor{
-		client:     client,
-		cfg:        cfg,
-		running:    false,
-		stopChan:   make(chan struct{}),
-		doneChan:   make(chan struct{}),
-		notesDir:   notesDir,
-		startTime:  time.Now(),
-		pidManager: pidManager,
-		pidFile:    pidFile,
+		client:         client,
+		cfg:            cfg,
+		running:        false,
+		stopChan:       make(chan struct{}),
+		doneChan:       make(chan struct{}),
+		notesDir:       notesDir,
+		startTime:      time.Now(),
+		pidManager:     pidManager,
+		pidFile:        pidFile,
+		sessionManager: sessionManager,
 	}, nil
 }
 
@@ -78,34 +87,17 @@ func (m *Monitor) Start() error {
 		return fmt.Errorf("monitor is already running (PID: %d)", pid)
 	}
 
-	// Create initial note file with header
-	headerPath := filepath.Join(m.notesDir, "chat_analysis.txt")
-	header := `You are an expert software architect and intermediary between a human developer and their AI coding agent. 
-Your role is to analyze the chat interactions in the provided window screenshots and do two things:
-1. Identify potential issues and improvements, and record better solutions. Especially issues that have been caused by human error/bias misguiding the AI via poor prompts/communication.
-2. Document best practices they use and the solutions to how they fix bugs.
+	// Start a new session
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %v", err)
+	}
+	projectName := filepath.Base(cwd)
 
-Your observations will be recorded in the wash notes directory. 
-Your observations will serve as context for AI coding agents to solve future issues/make better decisions in the current project.
-Here is the format you should use to record your observations:
-
-## Current Approach
-[Initializing chat monitor and starting analysis]
-
-## Issues
-- [Waiting for first analysis]
-- [System will analyze chat interactions every 30 seconds]
-
-## Solutions
-- [Waiting for first analysis]
-- [Will provide better approaches and implementation steps]
-
-## Best Practices
-- [Waiting for first analysis]
-- [Will document effective patterns and successful fixes]`
-
-	if err := os.WriteFile(headerPath, []byte(header), 0644); err != nil {
-		return fmt.Errorf("failed to create header file: %v", err)
+	// Start a new session for monitoring
+	_, err = m.sessionManager.StartSession(projectName, "Monitor chat interactions and analyze development patterns")
+	if err != nil {
+		return fmt.Errorf("failed to start monitoring session: %v", err)
 	}
 
 	// Write PID file using PID manager

@@ -41,12 +41,23 @@ const (
 
 // CodeChange represents a high-level change in code
 type CodeChange struct {
+	BaseRecord
 	File            string   `json:"file"`                   // The file that was modified
 	OldContent      string   `json:"old_content"`            // Previous content of the file
 	NewContent      string   `json:"new_content"`            // New content of the file
 	Description     string   `json:"description"`            // High-level description of the change
 	PotentialIssues []string `json:"issues,omitempty"`       // Potential issues to watch out for
 	Alternatives    []string `json:"alternatives,omitempty"` // Alternative approaches considered
+}
+
+// SetBaseRecord implements the BaseRecord interface
+func (cc *CodeChange) SetBaseRecord(br BaseRecord) {
+	cc.BaseRecord = br
+}
+
+// GetTimestamp implements the BaseRecord interface
+func (cc *CodeChange) GetTimestamp() time.Time {
+	return cc.Timestamp
 }
 
 // Analysis represents the analysis of an interaction
@@ -58,6 +69,7 @@ type Analysis struct {
 
 // Interaction represents a single interaction between user and AI
 type Interaction struct {
+	BaseRecord
 	Timestamp   time.Time `json:"timestamp"`
 	ProjectName string    `json:"project_name"`
 	ProjectGoal string    `json:"project_goal"`
@@ -78,12 +90,31 @@ type Interaction struct {
 	} `json:"metadata"`
 }
 
+// SetBaseRecord implements the BaseRecord interface
+func (i *Interaction) SetBaseRecord(br BaseRecord) {
+	i.BaseRecord = br
+}
+
+// GetTimestamp implements the BaseRecord interface
+func (i *Interaction) GetTimestamp() time.Time {
+	return i.Timestamp
+}
+
 // Note represents a single note in the system
 type Note struct {
-	Type      string                 `json:"type"`
-	Content   string                 `json:"content"`
-	Timestamp time.Time              `json:"timestamp"`
-	Metadata  map[string]interface{} `json:"metadata"`
+	BaseRecord
+	Content  string                 `json:"content"`
+	Metadata map[string]interface{} `json:"metadata"`
+}
+
+// SetBaseRecord implements the BaseRecord interface
+func (n *Note) SetBaseRecord(br BaseRecord) {
+	n.BaseRecord = br
+}
+
+// GetTimestamp implements the BaseRecord interface
+func (n *Note) GetTimestamp() time.Time {
+	return n.Timestamp
 }
 
 // Manager handles note storage and retrieval

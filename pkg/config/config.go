@@ -18,6 +18,7 @@ const (
 // Config holds the application configuration
 type Config struct {
 	OpenAIKey string
+	LogPath   string
 }
 
 // LoadConfig loads the configuration from file and environment variables
@@ -38,6 +39,7 @@ func LoadConfig() (*Config, error) {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// Config file not found, create it with default values
 			viper.Set("openai_key", "")
+			viper.Set("log_path", filepath.Join(configDir, "logs"))
 			if err := viper.SafeWriteConfig(); err != nil {
 				return nil, fmt.Errorf("error creating config file: %w", err)
 			}
@@ -56,14 +58,22 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("OpenAI API key not found. Please set OPENAI_API_KEY environment variable or add it to ~/.wash/wash.yaml")
 	}
 
+	// Get log path from config file or use default
+	logPath := viper.GetString("log_path")
+	if logPath == "" {
+		logPath = filepath.Join(configDir, "logs")
+	}
+
 	return &Config{
 		OpenAIKey: openAIKey,
+		LogPath:   logPath,
 	}, nil
 }
 
 // SaveConfig saves the configuration to file
 func SaveConfig(config *Config) error {
 	viper.Set("openai_key", config.OpenAIKey)
+	viper.Set("log_path", config.LogPath)
 
 	home, err := os.UserHomeDir()
 	if err != nil {
