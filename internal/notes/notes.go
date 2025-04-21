@@ -1,118 +1,314 @@
 package notes
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-// Note represents a single issue note
-type Note struct {
-	Path    string
-	Content string
+// InteractionType represents different types of interactions
+type InteractionType string
+
+const (
+	InteractionTypeChat     InteractionType = "chat"     // User-AI agent conversations
+	InteractionTypeCode     InteractionType = "code"     // Code changes and modifications
+	InteractionTypeAnalysis InteractionType = "analysis" // Analysis results and insights
+	InteractionTypeDecision InteractionType = "decision" // Key decisions and rationale
+	InteractionTypeError    InteractionType = "error"    // Errors and their resolutions
+)
+
+// Priority represents the priority level of an interaction
+type Priority string
+
+const (
+	PriorityLow    Priority = "low"
+	PriorityMedium Priority = "medium"
+	PriorityHigh   Priority = "high"
+)
+
+// Status represents the status of an interaction
+type Status string
+
+const (
+	StatusOpen     Status = "open"
+	StatusResolved Status = "resolved"
+	StatusArchived Status = "archived"
+)
+
+// CodeChange represents a high-level change in code
+type CodeChange struct {
+	File            string   `json:"file"`                   // The file that was modified
+	OldContent      string   `json:"old_content"`            // Previous content of the file
+	NewContent      string   `json:"new_content"`            // New content of the file
+	Description     string   `json:"description"`            // High-level description of the change
+	PotentialIssues []string `json:"issues,omitempty"`       // Potential issues to watch out for
+	Alternatives    []string `json:"alternatives,omitempty"` // Alternative approaches considered
 }
 
-// NewNote creates a new issue note with the given content
-func NewNote(content string) (*Note, error) {
-	// Get the current working directory to create project-specific path
-	cwd, err := os.Getwd()
+// Analysis represents the analysis of an interaction
+type Analysis struct {
+	Suggestions           []string `json:"suggestions,omitempty"`
+	PotentialIssues       []string `json:"potential_issues,omitempty"`
+	AlternativeApproaches []string `json:"alternative_approaches,omitempty"`
+}
+
+// Interaction represents a single interaction between user and AI
+type Interaction struct {
+	ID           string          `json:"id"`
+	Timestamp    time.Time       `json:"timestamp"`
+	ProjectName  string          `json:"project_name"`
+	Type         InteractionType `json:"type"`
+	Participants struct {
+		User    string `json:"user"`
+		AIAgent string `json:"ai_agent"`
+	} `json:"participants"`
+	Context struct {
+		FilesChanged []string `json:"files_changed,omitempty"`
+		CurrentState string   `json:"current_state,omitempty"`
+	} `json:"context"`
+	Content struct {
+		UserInput   string       `json:"user_input,omitempty"`
+		AIResponse  string       `json:"ai_response,omitempty"`
+		CodeChanges []CodeChange `json:"code_changes,omitempty"`
+	} `json:"content"`
+	Analysis Analysis `json:"analysis,omitempty"`
+	Metadata struct {
+		Tags     []string `json:"tags,omitempty"`
+		Priority Priority `json:"priority,omitempty"`
+		Status   Status   `json:"status,omitempty"`
+	} `json:"metadata"`
+}
+
+// Note represents a single note in the system
+type Note struct {
+	Type      string                 `json:"type"`
+	Content   string                 `json:"content"`
+	Timestamp time.Time              `json:"timestamp"`
+	Metadata  map[string]interface{} `json:"metadata"`
+}
+
+// Manager handles note storage and retrieval
+type Manager struct {
+	// TODO: Add storage backend (e.g., database, file system)
+}
+
+// NewManager creates a new notes manager
+func NewManager() *Manager {
+	return &Manager{}
+}
+
+// Save stores a note
+func (m *Manager) Save(note *Note) error {
+	// TODO: Implement actual storage
+	return nil
+}
+
+// Get retrieves notes matching the given criteria
+func (m *Manager) Get(filter map[string]interface{}) ([]*Note, error) {
+	// TODO: Implement actual retrieval
+	return nil, nil
+}
+
+// NotesManager handles all Wash notes operations
+type NotesManager struct {
+	baseDir string
+}
+
+// NewNotesManager creates a new NotesManager instance
+func NewNotesManager() (*NotesManager, error) {
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current directory: %w", err)
+		return nil, fmt.Errorf("error getting home directory: %w", err)
 	}
 
-	// Create project-specific notes directory in ~/.wash/projects/
-	projectPath := filepath.Base(cwd)
-	dir := filepath.Join(os.Getenv("HOME"), ".wash", "projects", projectPath, "notes")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create notes directory: %w", err)
+	baseDir := filepath.Join(homeDir, ".wash")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		return nil, fmt.Errorf("error creating .wash directory: %w", err)
 	}
 
-	// Create .gitignore in notes directory to prevent accidental commits
-	gitignorePath := filepath.Join(dir, ".gitignore")
-	if err := os.WriteFile(gitignorePath, []byte("*\n"), 0644); err != nil {
-		return nil, fmt.Errorf("failed to create .gitignore: %w", err)
+	// Create necessary subdirectories based on commands/actions
+	dirs := []string{
+		"changelog",     // Code change history and decisions
+		"monitor_notes", // Monitoring and interaction notes
+		"analyze",       // Code analysis results
+		"config",        // User configuration and preferences
+		"errors",        // Error tracking and debugging
 	}
 
-	// Generate filename with timestamp and issue type
-	timestamp := time.Now().Format("2006-01-02-15-04-05")
-	// Extract issue type from content if present
-	issueType := "general"
-	if strings.HasPrefix(content, "# ISSUE:") {
-		lines := strings.Split(content, "\n")
-		if len(lines) > 0 {
-			issueType = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(lines[0], "# ISSUE:")))
-			// Clean up issue type for filename
-			issueType = strings.ReplaceAll(issueType, " ", "-")
-			issueType = strings.ReplaceAll(issueType, "/", "-")
+	for _, dir := range dirs {
+		if err := os.MkdirAll(filepath.Join(baseDir, dir), 0755); err != nil {
+			return nil, fmt.Errorf("error creating %s directory: %w", dir, err)
 		}
 	}
-	filename := fmt.Sprintf("issue-%s-%s.md", issueType, timestamp)
-	path := filepath.Join(dir, filename)
 
-	// Format the content with proper markdown structure
-	formattedContent := fmt.Sprintf("# Wash Issue Note\n*Generated on %s*\n\n%s",
-		time.Now().Format("2006-01-02 15:04:05"),
-		content)
-
-	// Create the issue note file
-	if err := os.WriteFile(path, []byte(formattedContent), 0644); err != nil {
-		return nil, fmt.Errorf("failed to create issue note file: %w", err)
-	}
-
-	return &Note{
-		Path:    path,
-		Content: formattedContent,
-	}, nil
+	return &NotesManager{baseDir: baseDir}, nil
 }
 
-// AppendToNote appends content to an existing issue note
-func AppendToNote(path string, content string) error {
-	// Read existing content
-	existingContent, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("failed to read issue note file: %w", err)
+// SaveInteraction saves a new interaction
+func (nm *NotesManager) SaveInteraction(interaction *Interaction) error {
+	// Generate ID if not provided
+	if interaction.ID == "" {
+		interaction.ID = uuid.New().String()
 	}
 
-	// Format the new content with a clear separator and timestamp
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	separator := fmt.Sprintf("\n\n---\n\n## Update at %s\n\n", timestamp)
+	var targetDir string
+	switch interaction.Type {
+	case InteractionTypeCode, InteractionTypeDecision:
+		// Code changes and decisions go to changelog
+		projectDir := filepath.Join(nm.baseDir, "changelog", interaction.ProjectName)
+		if err := os.MkdirAll(projectDir, 0755); err != nil {
+			return fmt.Errorf("error creating project directory: %w", err)
+		}
+		targetDir = filepath.Join(projectDir, "changes")
+	case InteractionTypeChat:
+		// Chat interactions
+		targetDir = filepath.Join(nm.baseDir, "monitor_notes", interaction.ProjectName)
+	case InteractionTypeAnalysis:
+		// Analysis results
+		targetDir = filepath.Join(nm.baseDir, "analyze", interaction.ProjectName)
+	case InteractionTypeError:
+		// Error tracking
+		targetDir = filepath.Join(nm.baseDir, "errors", interaction.ProjectName)
+	}
 
-	// Append new content with separator
-	newContent := string(existingContent) + separator + content
+	// Create target directory if it doesn't exist
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("error creating target directory: %w", err)
+	}
 
-	// Write back to file
-	if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
-		return fmt.Errorf("failed to update issue note file: %w", err)
+	// Generate filename with timestamp and ID
+	filename := fmt.Sprintf("%s_%s.json", interaction.Timestamp.Format("2006-01-02-15-04-05"), interaction.ID)
+	filepath := filepath.Join(targetDir, filename)
+
+	// Save interaction to file
+	file, err := os.Create(filepath)
+	if err != nil {
+		return fmt.Errorf("error creating interaction file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(interaction); err != nil {
+		return fmt.Errorf("error encoding interaction: %w", err)
 	}
 
 	return nil
 }
 
-// ListNotes returns a list of all issue notes in the notes directory
-func ListNotes() ([]string, error) {
-	// Get the current working directory to create project-specific path
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current directory: %w", err)
+// SaveUserNote saves a user-specific note
+func (nm *NotesManager) SaveUserNote(username string, note *Note) error {
+	userDir := filepath.Join(nm.baseDir, "config", username)
+	if err := os.MkdirAll(userDir, 0755); err != nil {
+		return fmt.Errorf("error creating user directory: %w", err)
 	}
 
-	// Get project-specific notes directory
-	projectPath := filepath.Base(cwd)
-	dir := filepath.Join(os.Getenv("HOME"), ".wash", "projects", projectPath, "notes")
+	// Generate filename with timestamp
+	filename := fmt.Sprintf("%s_%s.json", note.Timestamp.Format("2006-01-02-15-04-05"), uuid.New().String())
+	filepath := filepath.Join(userDir, filename)
 
-	files, err := os.ReadDir(dir)
+	file, err := os.Create(filepath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read notes directory: %w", err)
+		return fmt.Errorf("error creating note file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(note); err != nil {
+		return fmt.Errorf("error encoding note: %w", err)
 	}
 
-	var notes []string
+	return nil
+}
+
+// LoadInteractions loads all interactions for a project
+func (nm *NotesManager) LoadInteractions(projectName string) ([]*Interaction, error) {
+	projectDir := filepath.Join(nm.baseDir, "projects", projectName)
+	interactionsDir := filepath.Join(projectDir, "interactions")
+
+	if _, err := os.Stat(interactionsDir); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	files, err := os.ReadDir(interactionsDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading interactions directory: %w", err)
+	}
+
+	var interactions []*Interaction
 	for _, file := range files {
-		if !file.IsDir() && filepath.Ext(file.Name()) == ".md" {
-			notes = append(notes, filepath.Join(dir, file.Name()))
+		if file.IsDir() {
+			continue
+		}
+
+		filepath := filepath.Join(interactionsDir, file.Name())
+		content, err := os.ReadFile(filepath)
+		if err != nil {
+			return nil, fmt.Errorf("error reading interaction file: %w", err)
+		}
+
+		var interaction Interaction
+		if err := json.Unmarshal(content, &interaction); err != nil {
+			return nil, fmt.Errorf("error decoding interaction: %w", err)
+		}
+
+		interactions = append(interactions, &interaction)
+	}
+
+	return interactions, nil
+}
+
+// QueryInteractions queries interactions based on criteria
+func (nm *NotesManager) QueryInteractions(projectName string, criteria map[string]interface{}) ([]*Interaction, error) {
+	interactions, err := nm.LoadInteractions(projectName)
+	if err != nil {
+		return nil, err
+	}
+
+	var filtered []*Interaction
+	for _, interaction := range interactions {
+		if matchesCriteria(interaction, criteria) {
+			filtered = append(filtered, interaction)
 		}
 	}
 
-	return notes, nil
+	return filtered, nil
+}
+
+// matchesCriteria checks if an interaction matches the given criteria
+func matchesCriteria(interaction *Interaction, criteria map[string]interface{}) bool {
+	for key, value := range criteria {
+		switch key {
+		case "type":
+			if interaction.Type != value.(InteractionType) {
+				return false
+			}
+		case "priority":
+			if interaction.Metadata.Priority != value.(Priority) {
+				return false
+			}
+		case "status":
+			if interaction.Metadata.Status != value.(Status) {
+				return false
+			}
+		case "tag":
+			tag := value.(string)
+			found := false
+			for _, t := range interaction.Metadata.Tags {
+				if t == tag {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+	}
+	return true
 }
