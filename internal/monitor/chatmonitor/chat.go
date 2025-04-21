@@ -44,7 +44,6 @@ func NewMonitor(cfg *config.Config) (*Monitor, error) {
 	if err := os.MkdirAll(notesDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create notes directory: %v", err)
 	}
-	fmt.Printf("Notes directory: %s\n", notesDir)
 
 	// Create .gitignore in notes directory to prevent accidental commits
 	gitignorePath := filepath.Join(notesDir, ".gitignore")
@@ -79,56 +78,53 @@ func (m *Monitor) Start() error {
 		return fmt.Errorf("monitor is already running (PID: %d)", pid)
 	}
 
-	fmt.Println("Starting monitor...")
 	// Create initial note file with header
 	headerPath := filepath.Join(m.notesDir, "chat_analysis.txt")
-	header := `# Chat Analysis
+	header := `You are an expert software architect and intermediary between a human developer and their AI coding agent. 
+Your role is to analyze the chat interactions in the provided window screenshots and do two things:
+1. Identify potential issues and improvements, and record better solutions. Especially issues that have been caused by human error/bias misguiding the AI via poor prompts/communication.
+2. Document best practices they use and the solutions to how they fix bugs.
+
+Your observations will be recorded in the wash notes directory. 
+Your observations will serve as context for AI coding agents to solve future issues/make better decisions in the current project.
+Here is the format you should use to record your observations:
 
 ## Current Approach
 [Initializing chat monitor and starting analysis]
 
-## Better Solutions
-1. [Waiting for first analysis]
-   - Key benefits: [To be determined]
-   - Implementation steps: [To be determined]
-
-2. [Alternative solution pending]
-   - Key benefits: [To be determined]
-   - Implementation steps: [To be determined]
-
-## Technical Considerations
+## Issues
 - [Waiting for first analysis]
 - [System will analyze chat interactions every 30 seconds]
 
+## Solutions
+- [Waiting for first analysis]
+- [Will provide better approaches and implementation steps]
+
 ## Best Practices
 - [Waiting for first analysis]
-- [Will provide recommendations based on observed patterns]
-`
+- [Will document effective patterns and successful fixes]`
 
 	if err := os.WriteFile(headerPath, []byte(header), 0644); err != nil {
 		return fmt.Errorf("failed to create header file: %v", err)
 	}
-	fmt.Printf("Created analysis file: %s\n", headerPath)
 
 	// Write PID file using PID manager
 	if err := m.pidManager.WritePID(); err != nil {
 		return fmt.Errorf("failed to write PID file: %v", err)
 	}
-	fmt.Printf("Wrote PID file (PID: %d)\n", os.Getpid())
 
 	// Set up signal handling for cleanup
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		fmt.Println("\nReceived interrupt signal, cleaning up...")
 		m.cleanup()
 		os.Exit(0)
 	}()
 
 	m.running = true
 	go m.monitorLoop()
-	fmt.Println("Monitor started successfully")
+	fmt.Println("Monitor started successfully!")
 
 	// Wait for the monitor loop to complete
 	<-m.doneChan
@@ -188,19 +184,17 @@ func (m *Monitor) Stop() error {
 }
 
 func (m *Monitor) monitorLoop() {
-	fmt.Println("Starting monitor loop...")
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			fmt.Println("Taking screenshot and analyzing...")
+			fmt.Println("Monitoring...")
 			if err := m.analyzeScreenshot(); err != nil {
 				fmt.Printf("Error analyzing screenshot: %v\n", err)
 			}
 		case <-m.stopChan:
-			fmt.Println("Received stop signal, exiting monitor loop")
 			m.running = false
 			close(m.doneChan)
 			return
@@ -230,24 +224,34 @@ func (m *Monitor) analyzeScreenshot() error {
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role: openai.ChatMessageRoleSystem,
-				Content: `You are an expert AI assistant analyzing chat interactions. Your task is to analyze the chat screenshot and provide insights in the following format:
+				Content: `You are an expert software architect and intermediary between a human developer and their AI coding agent. 
+Your role is to analyze the chat interactions in the provided window screenshots and do two things:
+1. Identify potential issues and improvements, and record better solutions. Especially issues that have been caused by human error/bias misguiding the AI via poor prompts/communication.
+2. Document best practices they use and the solutions to how they fix bugs.
 
-# Chat Analysis
+Your observations will be recorded in the wash notes directory. 
+Your observations will serve as context for AI coding agents to solve future issues/make better decisions in the current project.
+Here is the format you should use to record your observations:
 
 ## Current Approach
-[1-2 sentences describing what the user is trying to do]
+[1-2 sentences describing what the user is trying to achieve and their current method]
 
-## Better Solutions
-1. [Primary solution] - [1-2 sentence explanation]
-   - Key benefits: [bullet points]
-   - Implementation steps: [brief steps]
+## Issues
+- [Potential issue or problem identified]
+- [Human error/bias in communication]
+- [Misunderstanding or miscommunication]
 
-2. [Alternative solution] - [1-2 sentence explanation]
-   - Key benefits: [bullet points]
-   - Implementation steps: [brief steps]
+## Solutions
+- [Better approach or solution]
+- [Implementation step]
+- [Improvement to communication or prompt]
 
-## Error Tracking
-- [Error Type]: [Brief description of the error]`,
+## Best Practices
+- [Effective pattern or practice observed]
+- [Successful bug fix or problem-solving approach]
+- [Particularly effective communication strategy]
+
+For each section, provide multiple bullet points where relevant. Each bullet point should be a complete, standalone statement that can be parsed into the JSON structure.`,
 			},
 			{
 				Role: openai.ChatMessageRoleUser,

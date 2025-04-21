@@ -58,24 +58,19 @@ type Analysis struct {
 
 // Interaction represents a single interaction between user and AI
 type Interaction struct {
-	ID           string          `json:"id"`
-	Timestamp    time.Time       `json:"timestamp"`
-	ProjectName  string          `json:"project_name"`
-	Type         InteractionType `json:"type"`
-	Participants struct {
-		User    string `json:"user"`
-		AIAgent string `json:"ai_agent"`
-	} `json:"participants"`
-	Context struct {
+	Timestamp   time.Time `json:"timestamp"`
+	ProjectName string    `json:"project_name"`
+	ProjectGoal string    `json:"project_goal"`
+	Context     struct {
+		CurrentState string   `json:"current_state"`
 		FilesChanged []string `json:"files_changed,omitempty"`
-		CurrentState string   `json:"current_state,omitempty"`
 	} `json:"context"`
-	Content struct {
-		UserInput   string       `json:"user_input,omitempty"`
-		AIResponse  string       `json:"ai_response,omitempty"`
-		CodeChanges []CodeChange `json:"code_changes,omitempty"`
-	} `json:"content"`
-	Analysis Analysis `json:"analysis,omitempty"`
+	Analysis struct {
+		CurrentApproach string   `json:"current_approach"`
+		Issues          []string `json:"issues,omitempty"`
+		Solutions       []string `json:"solutions,omitempty"`
+		BestPractices   []string `json:"best_practices,omitempty"`
+	} `json:"analysis"`
 	Metadata struct {
 		Tags     []string `json:"tags,omitempty"`
 		Priority Priority `json:"priority,omitempty"`
@@ -150,39 +145,21 @@ func NewNotesManager() (*NotesManager, error) {
 
 // SaveInteraction saves a new interaction
 func (nm *NotesManager) SaveInteraction(interaction *Interaction) error {
-	// Generate ID if not provided
-	if interaction.ID == "" {
-		interaction.ID = uuid.New().String()
+	// Create project-specific directory
+	projectDir := filepath.Join(nm.baseDir, "projects", interaction.ProjectName)
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		return fmt.Errorf("error creating project directory: %w", err)
 	}
 
-	var targetDir string
-	switch interaction.Type {
-	case InteractionTypeCode, InteractionTypeDecision:
-		// Code changes and decisions go to changelog
-		projectDir := filepath.Join(nm.baseDir, "changelog", interaction.ProjectName)
-		if err := os.MkdirAll(projectDir, 0755); err != nil {
-			return fmt.Errorf("error creating project directory: %w", err)
-		}
-		targetDir = filepath.Join(projectDir, "changes")
-	case InteractionTypeChat:
-		// Chat interactions
-		targetDir = filepath.Join(nm.baseDir, "monitor_notes", interaction.ProjectName)
-	case InteractionTypeAnalysis:
-		// Analysis results
-		targetDir = filepath.Join(nm.baseDir, "analyze", interaction.ProjectName)
-	case InteractionTypeError:
-		// Error tracking
-		targetDir = filepath.Join(nm.baseDir, "errors", interaction.ProjectName)
-	}
+	// Generate filename with timestamp
+	filename := fmt.Sprintf("%s.json", interaction.Timestamp.Format("2006-01-02-15-04-05"))
+	notesDir := filepath.Join(projectDir, "notes")
+	filepath := filepath.Join(notesDir, filename)
 
-	// Create target directory if it doesn't exist
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return fmt.Errorf("error creating target directory: %w", err)
+	// Create notes directory if it doesn't exist
+	if err := os.MkdirAll(notesDir, 0755); err != nil {
+		return fmt.Errorf("error creating notes directory: %w", err)
 	}
-
-	// Generate filename with timestamp and ID
-	filename := fmt.Sprintf("%s_%s.json", interaction.Timestamp.Format("2006-01-02-15-04-05"), interaction.ID)
-	filepath := filepath.Join(targetDir, filename)
 
 	// Save interaction to file
 	file, err := os.Create(filepath)
@@ -228,16 +205,15 @@ func (nm *NotesManager) SaveUserNote(username string, note *Note) error {
 
 // LoadInteractions loads all interactions for a project
 func (nm *NotesManager) LoadInteractions(projectName string) ([]*Interaction, error) {
-	projectDir := filepath.Join(nm.baseDir, "projects", projectName)
-	interactionsDir := filepath.Join(projectDir, "interactions")
+	projectDir := filepath.Join(nm.baseDir, "projects", projectName, "notes")
 
-	if _, err := os.Stat(interactionsDir); os.IsNotExist(err) {
+	if _, err := os.Stat(projectDir); os.IsNotExist(err) {
 		return nil, nil
 	}
 
-	files, err := os.ReadDir(interactionsDir)
+	files, err := os.ReadDir(projectDir)
 	if err != nil {
-		return nil, fmt.Errorf("error reading interactions directory: %w", err)
+		return nil, fmt.Errorf("error reading notes directory: %w", err)
 	}
 
 	var interactions []*Interaction
@@ -246,7 +222,7 @@ func (nm *NotesManager) LoadInteractions(projectName string) ([]*Interaction, er
 			continue
 		}
 
-		filepath := filepath.Join(interactionsDir, file.Name())
+		filepath := filepath.Join(projectDir, file.Name())
 		content, err := os.ReadFile(filepath)
 		if err != nil {
 			return nil, fmt.Errorf("error reading interaction file: %w", err)
@@ -284,10 +260,6 @@ func (nm *NotesManager) QueryInteractions(projectName string, criteria map[strin
 func matchesCriteria(interaction *Interaction, criteria map[string]interface{}) bool {
 	for key, value := range criteria {
 		switch key {
-		case "type":
-			if interaction.Type != value.(InteractionType) {
-				return false
-			}
 		case "priority":
 			if interaction.Metadata.Priority != value.(Priority) {
 				return false

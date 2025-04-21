@@ -9,7 +9,7 @@ import (
 	"github.com/bkidd1/wash-cli/cmd/wash/monitor"
 	"github.com/bkidd1/wash-cli/cmd/wash/project"
 	"github.com/bkidd1/wash-cli/cmd/wash/remember"
-	"github.com/bkidd1/wash-cli/cmd/wash/version"
+	"github.com/bkidd1/wash-cli/cmd/wash/summary"
 	"github.com/spf13/cobra"
 )
 
@@ -21,12 +21,12 @@ var rootCmd = &cobra.Command{
 
 func initCommands() error {
 	// Add commands
+	rootCmd.AddCommand(bug.Command())
+	rootCmd.AddCommand(monitor.Command())
 	rootCmd.AddCommand(file.Command())
 	rootCmd.AddCommand(project.Command())
-	rootCmd.AddCommand(monitor.Command())
-	rootCmd.AddCommand(bug.Command())
-	rootCmd.AddCommand(version.Command())
 	rootCmd.AddCommand(remember.Command())
+	rootCmd.AddCommand(summary.Command())
 
 	// Hide the default completion command as we don't need it
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
