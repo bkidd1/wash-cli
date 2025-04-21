@@ -3,11 +3,29 @@ package file
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/brinleekidd/wash-cli/internal/analyzer"
 	"github.com/brinleekidd/wash-cli/pkg/config"
 	"github.com/spf13/cobra"
 )
+
+// loadingAnimation shows a simple loading animation
+func loadingAnimation(done chan bool) {
+	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	i := 0
+	for {
+		select {
+		case <-done:
+			fmt.Printf("\r") // Clear the line
+			return
+		default:
+			fmt.Printf("\rAnalyzing file... %s", spinner[i])
+			i = (i + 1) % len(spinner)
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
 
 // Command creates the file analysis command
 func Command() *cobra.Command {
@@ -28,11 +46,19 @@ and maintainability.`,
 			// Create analyzer
 			analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey)
 
+			// Create a channel to signal when analysis is done
+			done := make(chan bool)
+			go loadingAnimation(done)
+
 			// Analyze file
 			result, err := analyzer.AnalyzeFile(context.Background(), args[0])
 			if err != nil {
+				done <- true
 				return fmt.Errorf("failed to analyze file: %w", err)
 			}
+
+			// Signal that analysis is complete
+			done <- true
 
 			// Print results
 			fmt.Println(result)
