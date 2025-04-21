@@ -97,3 +97,9 @@ washnotes/
 cmd/wash/*.exe
 cmd/wash/*.test
 cmd/wash/*.out
+
+# Ignore specific build artifacts but track source code
+cmd/wash/wash
+cmd/wash/wash.exe
+cmd/wash/wash.test
+cmd/wash/wash.out
