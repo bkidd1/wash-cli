@@ -140,10 +140,13 @@ Format your response as follows:
 
 ## Wash Solutions
 1. [Primary solution]
-   - Why it's better than the current approach: [Clear explanation]
+   - [Clear and concise explanation of why it's better than the current approach]
 
 2. [Alternative solution]
-   - Why it's better than the current approach: [Clear explanation]`
+   - [Clear and concise explanation of why it's better than the current approach]
+   
+ ##Wash Notes
+   - [Relevant notes from the project's wash notes]`
 
 	// Get analysis from OpenAI
 	resp, err := c.analyzer.Client.CreateChatCompletion(
