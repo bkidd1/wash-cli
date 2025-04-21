@@ -84,3 +84,10 @@ go.work
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Binary
+wash
+
+# Generated directories
+washnotes/
+.wash-notes/
