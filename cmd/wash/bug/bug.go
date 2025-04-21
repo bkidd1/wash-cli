@@ -86,6 +86,23 @@ func NewBugCommand(projectPath string, query string) (*BugCommand, error) {
 	}, nil
 }
 
+// loadingAnimation shows a simple loading animation
+func loadingAnimation(done chan bool) {
+	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	i := 0
+	for {
+		select {
+		case <-done:
+			fmt.Printf("\r") // Clear the line
+			return
+		default:
+			fmt.Printf("\rAnalyzing bug... %s", spinner[i])
+			i = (i + 1) % len(spinner)
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
+
 // Execute runs the bug command
 func (c *BugCommand) Execute() error {
 	// Get project context from notes
@@ -102,6 +119,10 @@ func (c *BugCommand) Execute() error {
 			projectContext = string(content)
 		}
 	}
+
+	// Create a channel to signal when analysis is done
+	done := make(chan bool)
+	go loadingAnimation(done)
 
 	// Create the system prompt for objective analysis
 	systemPrompt := `You are an expert software architect and development assistant. Your role is to provide objective, sometimes blunt, guidance to developers. 
@@ -166,8 +187,12 @@ Please provide objective guidance, even if it means telling me I'm doing it wron
 		},
 	)
 	if err != nil {
+		done <- true
 		return fmt.Errorf("failed to get analysis: %w", err)
 	}
+
+	// Signal that analysis is complete
+	done <- true
 
 	// Print the analysis
 	fmt.Println(resp.Choices[0].Message.Content)
