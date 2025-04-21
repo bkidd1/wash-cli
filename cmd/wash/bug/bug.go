@@ -87,12 +87,12 @@ func NewBugCommand(projectPath string, query string) (*BugCommand, error) {
 }
 
 // loadingAnimation shows a simple loading animation
-func loadingAnimation(done chan bool) {
+func loadingAnimation(ctx context.Context) {
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	i := 0
 	for {
 		select {
-		case <-done:
+		case <-ctx.Done():
 			fmt.Printf("\r") // Clear the line
 			return
 		default:
@@ -111,7 +111,15 @@ func (c *BugCommand) Execute() error {
 
 	// Read the analysis file if it exists
 	var projectContext string
-	if content, err := os.ReadFile(analysisPath); err == nil {
+	content, err := os.ReadFile(analysisPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			// Only log if it's not a "file not found" error
+			fmt.Printf("Warning: Could not read analysis file: %v\n", err)
+		}
+		// Continue with empty context if file doesn't exist or can't be read
+		projectContext = ""
+	} else {
 		// Limit context to last 2000 characters to avoid token limits
 		if len(content) > 2000 {
 			projectContext = "... (earlier context omitted) ...\n" + string(content[len(content)-2000:])
@@ -120,9 +128,12 @@ func (c *BugCommand) Execute() error {
 		}
 	}
 
-	// Create a channel to signal when analysis is done
-	done := make(chan bool)
-	go loadingAnimation(done)
+	// Create a context for the loading animation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cleanup in case of early return
+
+	// Start loading animation
+	go loadingAnimation(ctx)
 
 	// Create the system prompt for objective analysis
 	systemPrompt := `You are an expert software architect and intermediary between a human developer and their AI coding agent. 
@@ -172,12 +183,12 @@ Please provide objective guidance, even if it means telling me I'm doing it wron
 		},
 	)
 	if err != nil {
-		done <- true
+		cancel() // Stop the loading animation
 		return fmt.Errorf("failed to get analysis: %w", err)
 	}
 
-	// Signal that analysis is complete
-	done <- true
+	// Stop the loading animation
+	cancel()
 
 	// Print the analysis
 	fmt.Println(resp.Choices[0].Message.Content)
