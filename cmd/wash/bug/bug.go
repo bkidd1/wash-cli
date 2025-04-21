@@ -96,7 +96,7 @@ func loadingAnimation(done chan bool) {
 			fmt.Printf("\r") // Clear the line
 			return
 		default:
-			fmt.Printf("\rAnalyzing bug... %s", spinner[i])
+			fmt.Printf("\rWashing bug... %s", spinner[i])
 			i = (i + 1) % len(spinner)
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -125,43 +125,25 @@ func (c *BugCommand) Execute() error {
 	go loadingAnimation(done)
 
 	// Create the system prompt for objective analysis
-	systemPrompt := `You are an expert software architect and development assistant. Your role is to provide objective, sometimes blunt, guidance to developers. 
+	systemPrompt := `You are an expert software architect and intermediary between a human developer and their AI coding agent. 
+	Your role is to analyze the bug they provided to then return potential fixes/improvements. 
+	Consider how issues may have been caused by human error/bias that has been misguiding the AI coding agent via poor prompts/communication. 
+	Provide your objective, sometimes blunt, guidance. 
 
 When analyzing a problem:
 1. First understand what the user is trying to achieve
 2. Consider if their approach is fundamentally flawed
-3. Look for patterns in the project history that might indicate deeper issues
-4. Don't be afraid to tell them they're doing it wrong if that's the case
-5. Provide clear, actionable alternatives that address the root cause
+3. Look for patterns in the project history that might indicate deeper issues. Refenerence the project's wash notes as context.
+4. Provide clear, actionable alternatives that address the root cause
 
 Format your response as follows:
 
-# Analysis: [Brief description of the core issue]
-
-## Current Approach
-[What the user is trying to do, even if it's wrong]
-
-## Why This Might Not Work
-[Objective reasons why their approach might fail or be suboptimal]
-
-## Better Solutions
+## Wash Solutions
 1. [Primary solution]
-   - Why it's better: [Clear explanation]
-   - Implementation steps: [Step-by-step guide]
-   - Potential challenges: [What to watch out for]
+   - Why it's better than the current approach: [Clear explanation]
 
 2. [Alternative solution]
-   - Why it's better: [Clear explanation]
-   - Implementation steps: [Step-by-step guide]
-   - Potential challenges: [What to watch out for]
-
-## Technical Considerations
-- [Important technical detail 1]
-- [Important technical detail 2]
-
-## Best Practices
-- [Relevant best practice 1]
-- [Relevant best practice 2]`
+   - Why it's better than the current approach: [Clear explanation]`
 
 	// Get analysis from OpenAI
 	resp, err := c.analyzer.Client.CreateChatCompletion(
