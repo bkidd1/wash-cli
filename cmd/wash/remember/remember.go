@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/notes"
@@ -18,26 +19,34 @@ func Command() *cobra.Command {
 		Long:  `Save something to remember for your project. Items are stored in ~/.wash/remember/[project-name]/`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate content
+			content := strings.TrimSpace(args[0])
+			if content == "" {
+				return fmt.Errorf("content cannot be empty")
+			}
+
 			// Get current working directory for project name
 			cwd, err := os.Getwd()
 			if err != nil {
-				return fmt.Errorf("failed to get current directory: %v", err)
+				return fmt.Errorf("failed to get current directory: %w", err)
 			}
 			projectName := filepath.Base(cwd)
 
 			// Create notes manager
 			notesManager, err := notes.NewNotesManager()
 			if err != nil {
-				return fmt.Errorf("failed to create notes manager: %v", err)
+				return fmt.Errorf("failed to create notes manager: %w", err)
 			}
 
 			// Create new note
 			note := &notes.Note{
-				Type:      "user",
-				Content:   args[0],
-				Timestamp: time.Now(),
+				BaseRecord: notes.BaseRecord{
+					Timestamp: time.Now(),
+				},
+				Content: content,
 				Metadata: map[string]interface{}{
 					"project": projectName,
+					"type":    "remember",
 				},
 			}
 
@@ -49,7 +58,7 @@ func Command() *cobra.Command {
 
 			// Save note
 			if err := notesManager.SaveUserNote(username, note); err != nil {
-				return fmt.Errorf("failed to save note: %v", err)
+				return fmt.Errorf("failed to save note: %w", err)
 			}
 
 			fmt.Printf("Saved successfully at %s\n", note.Timestamp.Format(time.RFC3339))
