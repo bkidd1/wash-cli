@@ -8,6 +8,7 @@ import (
 	"github.com/bkidd1/wash-cli/cmd/wash/file"
 	"github.com/bkidd1/wash-cli/cmd/wash/monitor"
 	"github.com/bkidd1/wash-cli/cmd/wash/project"
+	"github.com/bkidd1/wash-cli/cmd/wash/remember"
 	"github.com/bkidd1/wash-cli/cmd/wash/version"
 	"github.com/spf13/cobra"
 )
@@ -25,6 +26,7 @@ func initCommands() error {
 	rootCmd.AddCommand(monitor.Command())
 	rootCmd.AddCommand(bug.Command())
 	rootCmd.AddCommand(version.Command())
+	rootCmd.AddCommand(remember.Command())
 
 	// Hide the default completion command as we don't need it
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true

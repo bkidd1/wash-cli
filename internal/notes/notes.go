@@ -202,7 +202,7 @@ func (nm *NotesManager) SaveInteraction(interaction *Interaction) error {
 
 // SaveUserNote saves a user-specific note
 func (nm *NotesManager) SaveUserNote(username string, note *Note) error {
-	userDir := filepath.Join(nm.baseDir, "config", username)
+	userDir := filepath.Join(nm.baseDir, "remember", username)
 	if err := os.MkdirAll(userDir, 0755); err != nil {
 		return fmt.Errorf("error creating user directory: %w", err)
 	}
