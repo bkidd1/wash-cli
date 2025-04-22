@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,16 +10,15 @@ import (
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/notes"
-	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/sashabaranov/go-openai"
 )
 
 const (
 	terminalSystemPrompt = `You are an expert software architect and intermediary between a human developer and their AI coding agent. Your role is to analyze their code and interactions to identify potential issues and improvements. Especially issues that may have been caused by human error/bias misguiding the AI via poor prompts/communication.
 
-CRITICAL: The reminders are the highest priority context. They may indicate how an issue was succesfully solved in the past.
+CRITICAL: The reminders are the highest priority context. They usually indicate how an issue was succesfully solved in the past - or how the user prefers to solve issues. AS LONG AS THEY ARE RELEVENT TO THE ISSUE AT HAND, you should consider them first.
 
-The wash notes provide additional context about recent work and decisions. Use these to inform your analysis, but prioritize the reminders.
+The wash notes also provide additional context about recent work and decisions. Use these to inform your analysis as well if relevant to the issue at hand.
 
 Focus your analysis on three priority levels:
 
@@ -54,11 +54,10 @@ DO NOT include any introductory text, summaries, conclusions or direct reference
 
 // TerminalAnalyzer represents a code analyzer that returns formatted terminal output
 type TerminalAnalyzer struct {
-	Client         *openai.Client
-	cfg            *config.Config
-	projectGoal    string
-	rememberNotes  []string
-	sessionManager *notes.SessionManager
+	Client        *openai.Client
+	projectGoal   string
+	rememberNotes []string
+	notesManager  *notes.NotesManager
 }
 
 // NewTerminalAnalyzer creates a new terminal analyzer
@@ -71,20 +70,39 @@ func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []stri
 		fmt.Printf("Warning: Could not create wash directory: %v\n", err)
 	}
 
-	sessionManager, err := notes.NewSessionManager(washDir)
+	notesManager, err := notes.NewNotesManager()
 	if err != nil {
-		fmt.Printf("Warning: Could not create session manager: %v\n", err)
-		sessionManager = nil
+		fmt.Printf("Warning: Could not create notes manager: %v\n", err)
+		notesManager = nil
+	}
+
+	// Get remember notes from notes manager if available
+	if notesManager != nil {
+		// Get current working directory for project name
+		cwd, err := os.Getwd()
+		if err == nil {
+			projectName := filepath.Base(cwd)
+			// Get current user
+			username := os.Getenv("USER")
+			if username == "" {
+				username = "default"
+			}
+			// Get remember notes for this user and project
+			notes, err := notesManager.GetUserNotes(username, projectName)
+			if err == nil {
+				rememberNotes = make([]string, len(notes))
+				for i, note := range notes {
+					rememberNotes[i] = note.Content
+				}
+			}
+		}
 	}
 
 	return &TerminalAnalyzer{
-		Client: client,
-		cfg: &config.Config{
-			OpenAIKey: apiKey,
-		},
-		projectGoal:    projectGoal,
-		rememberNotes:  rememberNotes,
-		sessionManager: sessionManager,
+		Client:        client,
+		projectGoal:   projectGoal,
+		rememberNotes: rememberNotes,
+		notesManager:  notesManager,
 	}
 }
 
@@ -98,10 +116,6 @@ func (a *TerminalAnalyzer) UpdateProjectContext(projectGoal string, rememberNote
 func (a *TerminalAnalyzer) getContextualPrompt() string {
 	var context strings.Builder
 
-	fmt.Println("\n=== DEBUG: Context Data ===")
-	fmt.Printf("Project Goal: %s\n", a.projectGoal)
-	fmt.Printf("Remember Notes: %v\n", a.rememberNotes)
-
 	// Add remember notes if they exist (TOP PRIORITY)
 	if len(a.rememberNotes) > 0 {
 		context.WriteString("CRITICAL USER REMINDERS (MUST CONSIDER THESE FIRST):\n")
@@ -111,55 +125,54 @@ func (a *TerminalAnalyzer) getContextualPrompt() string {
 		context.WriteString("\n")
 	}
 
-	// Add wash notes context from the most recent session (SECOND PRIORITY)
-	if session := a.sessionManager.GetCurrentSession(); session != nil {
-		fmt.Printf("Current Session ID: %s\n", session.ID)
-		fmt.Printf("Session Project Name: %s\n", session.ProjectName)
-		fmt.Printf("Session Project Goal: %s\n", session.ProjectGoal)
+	// Add recent monitor notes if available
+	if a.notesManager != nil {
+		// Get the current working directory name as project name
+		cwd, err := os.Getwd()
+		if err == nil {
+			projectName := filepath.Base(cwd)
+			// Get recent monitor notes
+			monitorDir := a.notesManager.GetMonitorNotesDir(projectName)
 
-		recentRecords := a.sessionManager.GetRecentRecords(session.ID, 5*time.Minute)
-		fmt.Printf("Number of Recent Records: %d\n", len(recentRecords))
+			// Create monitor directory if it doesn't exist
+			if err := os.MkdirAll(monitorDir, 0755); err != nil {
+				fmt.Printf("Warning: Could not create monitor directory: %v\n", err)
+			} else {
+				files, err := os.ReadDir(monitorDir)
+				if err == nil {
+					context.WriteString("RECENT WASH NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n")
+					cutoff := time.Now().Add(-5 * time.Minute)
 
-		if len(recentRecords) > 0 {
-			context.WriteString("RECENT WASH NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n")
-			for _, record := range recentRecords {
-				switch r := record.(type) {
-				case *notes.MonitorNote:
-					context.WriteString(fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Analysis.CurrentApproach))
-					if len(r.Analysis.Issues) > 0 {
-						context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(r.Analysis.Issues, ", ")))
+					// Read files in reverse chronological order
+					for i := len(files) - 1; i >= 0; i-- {
+						file := files[i]
+						if filepath.Ext(file.Name()) != ".json" {
+							continue
+						}
+
+						data, err := os.ReadFile(filepath.Join(monitorDir, file.Name()))
+						if err != nil {
+							continue
+						}
+
+						var note notes.MonitorNote
+						if err := json.Unmarshal(data, &note); err != nil {
+							continue
+						}
+
+						if note.Timestamp.After(cutoff) {
+							context.WriteString(fmt.Sprintf("- %s: User asked '%s'\n", note.Timestamp.Format("2006-01-02 15:04:05"), note.Interaction.UserRequest))
+							context.WriteString(fmt.Sprintf("  AI responded: %s\n", note.Interaction.AIAction))
+						}
 					}
-					if len(r.Analysis.Solutions) > 0 {
-						context.WriteString(fmt.Sprintf("  Solutions: %s\n", strings.Join(r.Analysis.Solutions, ", ")))
-					}
-				case *notes.FileNote:
-					context.WriteString(fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Analysis))
-					if len(r.Issues) > 0 {
-						context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(r.Issues, ", ")))
-					}
-				case *notes.ProjectNote:
-					context.WriteString(fmt.Sprintf("- %s: Project Analysis\n", r.Timestamp.Format("2006-01-02 15:04:05")))
-					if len(r.Structure.Issues) > 0 {
-						context.WriteString(fmt.Sprintf("  Structure Issues: %s\n", strings.Join(r.Structure.Issues, ", ")))
-					}
-				case *notes.BugNote:
-					context.WriteString(fmt.Sprintf("- %s: Bug Report\n", r.Timestamp.Format("2006-01-02 15:04:05")))
-					context.WriteString(fmt.Sprintf("  Description: %s\n", r.Description))
-					if r.Solution != "" {
-						context.WriteString(fmt.Sprintf("  Solution: %s\n", r.Solution))
-					}
+					context.WriteString("\n")
 				}
 			}
-			context.WriteString("\n")
 		}
-	} else {
-		fmt.Println("No current session found")
 	}
 
 	// Add project goal (LOWEST PRIORITY)
 	context.WriteString(fmt.Sprintf("PROJECT GOAL:\n%s\n\n", a.projectGoal))
-
-	fmt.Println("=== END DEBUG ===\n")
 
 	return fmt.Sprintf("%s\n%s", context.String(), terminalSystemPrompt)
 }
@@ -312,4 +325,90 @@ func (a *TerminalAnalyzer) GetErrorFix(ctx context.Context, chatHistory string, 
 %s`, errorType, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
 
 	return analysis, nil
+}
+
+// BugAnalysis represents the analysis of a bug
+type BugAnalysis struct {
+	Analysis           string
+	PotentialCauses    string
+	SuggestedSolutions string
+	RelatedContext     string
+}
+
+// AnalyzeBug analyzes a bug description and provides potential solutions
+func (a *TerminalAnalyzer) AnalyzeBug(ctx context.Context, description string) (*BugAnalysis, error) {
+	// Get project context from remember notes
+	contextPrompt := a.getContextualPrompt()
+
+	// Create chat completion request
+	resp, err := a.Client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: "gpt-4",
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: contextPrompt + "\n\nFor bug analysis, you MUST format your response EXACTLY as follows:\n\n# Potential Causes\n[list potential causes here]\n\n# Suggested Solutions\n[list suggested solutions here]\n\nDo not include any other sections or text.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: fmt.Sprintf("Bug description: %s", description),
+				},
+			},
+			MaxTokens: 1000,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to analyze bug: %w", err)
+	}
+
+	// Parse the response into sections
+	content := resp.Choices[0].Message.Content
+	sections := parseSections(content)
+
+	return &BugAnalysis{
+		Analysis:           "",
+		PotentialCauses:    sections["Potential Causes"],
+		SuggestedSolutions: sections["Suggested Solutions"],
+		RelatedContext:     "",
+	}, nil
+}
+
+// parseSections splits the AI response into sections
+func parseSections(content string) map[string]string {
+	sections := make(map[string]string)
+	lines := strings.Split(content, "\n")
+
+	currentSection := ""
+	var currentContent strings.Builder
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "#") {
+			// If we were building a previous section, save it
+			if currentSection != "" {
+				sections[strings.TrimSpace(currentSection)] = strings.TrimSpace(currentContent.String())
+				currentContent.Reset()
+			}
+			// Extract new section name (remove # and any leading/trailing spaces)
+			currentSection = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+		} else if currentSection != "" {
+			// Add the line to the current section
+			currentContent.WriteString(line + "\n")
+		}
+	}
+
+	// Save the last section
+	if currentSection != "" {
+		sections[strings.TrimSpace(currentSection)] = strings.TrimSpace(currentContent.String())
+	}
+
+	// Ensure required sections exist with meaningful defaults
+	requiredSections := []string{"Potential Causes", "Suggested Solutions"}
+	for _, section := range requiredSections {
+		if content, exists := sections[section]; !exists || strings.TrimSpace(content) == "" {
+			sections[section] = fmt.Sprintf("No %s information provided by the analysis", strings.ToLower(section))
+		}
+	}
+
+	return sections
 }
