@@ -157,7 +157,9 @@ Format your response as follows:
    - [Clear and concise explanation of why it's better than the current approach]
    
  ##Wash Notes
-   - [Relevant notes from the project's wash notes]`
+   - [Relevant notes from the project's wash notes]
+   
+ If no relevant notes are found, do not return a ##Wash Notes section`
 
 	// Get analysis from OpenAI
 	resp, err := c.analyzer.Client.CreateChatCompletion(
@@ -170,14 +172,8 @@ Format your response as follows:
 					Content: systemPrompt,
 				},
 				{
-					Role: openai.ChatMessageRoleUser,
-					Content: fmt.Sprintf(`Project Context:
-%s
-
-User's Query:
-%s
-
-Please provide objective guidance, even if it means telling me I'm doing it wrong.`, projectContext, c.query),
+					Role:    openai.ChatMessageRoleUser,
+					Content: fmt.Sprintf("Project Context:\n%s\n\nUser's Query:\n%s\n\nPlease provide objective guidance, even if it means telling me I'm doing it wrong.", projectContext, c.query),
 				},
 			},
 		},
