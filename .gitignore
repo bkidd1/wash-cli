@@ -16,7 +16,6 @@ out/
 .env.*.local
 
 # Logs
-# logs/
 *.log
 
 # Runtime data
@@ -54,22 +53,12 @@ go.work
 washnotes/
 
 # Binary files
-/wash
-wash
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-
-# Build artifacts in cmd/wash (track source files)
-cmd/wash/*.exe
-cmd/wash/*.test
-cmd/wash/*.out
-cmd/wash/wash
-cmd/wash/wash.exe
-cmd/wash/wash.test
-cmd/wash/wash.out
+/wash
 cmd/wash/*.o
 
 # Generated files

@@ -17,30 +17,32 @@ var (
 	priority         string
 )
 
-var Command = &cobra.Command{
-	Use:   "bug",
-	Short: "Report a bug in your code",
-	Long:  `Report a bug in your code with detailed information about the issue.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		// Get current working directory for project context
-		cwd, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %v", err)
-		}
+// Command creates the bug command
+func Command() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "bug",
+		Short: "Report a bug in your code",
+		Long:  `Report a bug in your code with detailed information about the issue.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Get current working directory for project context
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("failed to get current directory: %v", err)
+			}
 
-		// Create project-specific bug directory
-		projectPath := filepath.Base(cwd)
-		bugDir := filepath.Join(os.Getenv("HOME"), ".wash", "projects", projectPath, "bugs")
-		if err := os.MkdirAll(bugDir, 0755); err != nil {
-			return fmt.Errorf("failed to create bugs directory: %v", err)
-		}
+			// Create project-specific bug directory
+			projectPath := filepath.Base(cwd)
+			bugDir := filepath.Join(os.Getenv("HOME"), ".wash", "projects", projectPath, "bugs")
+			if err := os.MkdirAll(bugDir, 0755); err != nil {
+				return fmt.Errorf("failed to create bugs directory: %v", err)
+			}
 
-		// Generate bug report filename with timestamp
-		timestamp := time.Now().Format("2006-01-02-15-04-05")
-		bugFile := filepath.Join(bugDir, fmt.Sprintf("bug_%s.md", timestamp))
+			// Generate bug report filename with timestamp
+			timestamp := time.Now().Format("2006-01-02-15-04-05")
+			bugFile := filepath.Join(bugDir, fmt.Sprintf("bug_%s.md", timestamp))
 
-		// Create bug report
-		report := fmt.Sprintf(`# Bug Report
+			// Create bug report
+			report := fmt.Sprintf(`# Bug Report
 *Reported on %s*
 
 ## Description
@@ -63,22 +65,36 @@ Open
 
 ## Notes
 `,
-			time.Now().Format("2006-01-02 15:04:05"),
-			description,
-			formatSteps(stepsToReproduce),
-			expectedBehavior,
-			actualBehavior,
-			priority,
-		)
+				time.Now().Format("2006-01-02 15:04:05"),
+				description,
+				formatSteps(stepsToReproduce),
+				expectedBehavior,
+				actualBehavior,
+				priority,
+			)
 
-		// Save bug report
-		if err := os.WriteFile(bugFile, []byte(report), 0644); err != nil {
-			return fmt.Errorf("failed to save bug report: %v", err)
-		}
+			// Save bug report
+			if err := os.WriteFile(bugFile, []byte(report), 0644); err != nil {
+				return fmt.Errorf("failed to save bug report: %v", err)
+			}
 
-		fmt.Printf("Bug report saved to %s\n", bugFile)
-		return nil
-	},
+			fmt.Printf("Bug report saved to %s\n", bugFile)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&description, "description", "d", "", "Description of the bug")
+	cmd.Flags().StringSliceVarP(&stepsToReproduce, "steps", "s", []string{}, "Steps to reproduce the bug")
+	cmd.Flags().StringVarP(&expectedBehavior, "expected", "e", "", "Expected behavior")
+	cmd.Flags().StringVarP(&actualBehavior, "actual", "a", "", "Actual behavior")
+	cmd.Flags().StringVarP(&priority, "priority", "p", "medium", "Priority level (low, medium, high)")
+
+	// Mark required flags
+	cmd.MarkFlagRequired("description")
+	cmd.MarkFlagRequired("expected")
+	cmd.MarkFlagRequired("actual")
+
+	return cmd
 }
 
 func formatSteps(steps []string) string {
@@ -90,17 +106,4 @@ func formatSteps(steps []string) string {
 		result += fmt.Sprintf("%d. %s\n", i+1, step)
 	}
 	return result
-}
-
-func init() {
-	Command.Flags().StringVarP(&description, "description", "d", "", "Description of the bug")
-	Command.Flags().StringSliceVarP(&stepsToReproduce, "steps", "s", []string{}, "Steps to reproduce the bug")
-	Command.Flags().StringVarP(&expectedBehavior, "expected", "e", "", "Expected behavior")
-	Command.Flags().StringVarP(&actualBehavior, "actual", "a", "", "Actual behavior")
-	Command.Flags().StringVarP(&priority, "priority", "p", "medium", "Priority level (low, medium, high)")
-
-	// Mark required flags
-	Command.MarkFlagRequired("description")
-	Command.MarkFlagRequired("expected")
-	Command.MarkFlagRequired("actual")
 }
