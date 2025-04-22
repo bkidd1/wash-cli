@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/notes"
-	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -55,7 +55,6 @@ DO NOT include any introductory text, summaries, conclusions or direct reference
 // TerminalAnalyzer represents a code analyzer that returns formatted terminal output
 type TerminalAnalyzer struct {
 	Client        *openai.Client
-	cfg           *config.Config
 	projectGoal   string
 	rememberNotes []string
 	notesManager  *notes.NotesManager
@@ -77,11 +76,30 @@ func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []stri
 		notesManager = nil
 	}
 
+	// Get remember notes from notes manager if available
+	if notesManager != nil {
+		// Get current working directory for project name
+		cwd, err := os.Getwd()
+		if err == nil {
+			projectName := filepath.Base(cwd)
+			// Get current user
+			username := os.Getenv("USER")
+			if username == "" {
+				username = "default"
+			}
+			// Get remember notes for this user and project
+			notes, err := notesManager.GetUserNotes(username, projectName)
+			if err == nil {
+				rememberNotes = make([]string, len(notes))
+				for i, note := range notes {
+					rememberNotes[i] = note.Content
+				}
+			}
+		}
+	}
+
 	return &TerminalAnalyzer{
-		Client: client,
-		cfg: &config.Config{
-			OpenAIKey: apiKey,
-		},
+		Client:        client,
 		projectGoal:   projectGoal,
 		rememberNotes: rememberNotes,
 		notesManager:  notesManager,
@@ -98,10 +116,6 @@ func (a *TerminalAnalyzer) UpdateProjectContext(projectGoal string, rememberNote
 func (a *TerminalAnalyzer) getContextualPrompt() string {
 	var context strings.Builder
 
-	fmt.Println("\n=== DEBUG: Context Data ===")
-	fmt.Printf("Project Goal: %s\n", a.projectGoal)
-	fmt.Printf("Remember Notes: %v\n", a.rememberNotes)
-
 	// Add remember notes if they exist (TOP PRIORITY)
 	if len(a.rememberNotes) > 0 {
 		context.WriteString("CRITICAL USER REMINDERS (MUST CONSIDER THESE FIRST):\n")
@@ -117,30 +131,53 @@ func (a *TerminalAnalyzer) getContextualPrompt() string {
 		cwd, err := os.Getwd()
 		if err == nil {
 			projectName := filepath.Base(cwd)
-			interactions, err := a.notesManager.LoadInteractions(projectName)
-			if err == nil && len(interactions) > 0 {
-				context.WriteString("RECENT WASH NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n")
-				cutoff := time.Now().Add(-5 * time.Minute)
-				for _, interaction := range interactions {
-					if interaction.Timestamp.After(cutoff) {
-						context.WriteString(fmt.Sprintf("- %s: %s\n", interaction.Timestamp.Format("2006-01-02 15:04:05"), interaction.Analysis.CurrentApproach))
-						if len(interaction.Analysis.Issues) > 0 {
-							context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(interaction.Analysis.Issues, ", ")))
+			// Get recent monitor notes
+			monitorDir := a.notesManager.GetMonitorNotesDir(projectName)
+
+			// Create monitor directory if it doesn't exist
+			if err := os.MkdirAll(monitorDir, 0755); err != nil {
+				fmt.Printf("Warning: Could not create monitor directory: %v\n", err)
+			} else {
+				files, err := os.ReadDir(monitorDir)
+				if err == nil {
+					context.WriteString("RECENT WASH NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n")
+					cutoff := time.Now().Add(-5 * time.Minute)
+
+					// Read files in reverse chronological order
+					for i := len(files) - 1; i >= 0; i-- {
+						file := files[i]
+						if filepath.Ext(file.Name()) != ".json" {
+							continue
 						}
-						if len(interaction.Analysis.Solutions) > 0 {
-							context.WriteString(fmt.Sprintf("  Solutions: %s\n", strings.Join(interaction.Analysis.Solutions, ", ")))
+
+						data, err := os.ReadFile(filepath.Join(monitorDir, file.Name()))
+						if err != nil {
+							continue
+						}
+
+						var note notes.MonitorNote
+						if err := json.Unmarshal(data, &note); err != nil {
+							continue
+						}
+
+						if note.Timestamp.After(cutoff) {
+							context.WriteString(fmt.Sprintf("- %s: %s\n", note.Timestamp.Format("2006-01-02 15:04:05"), note.Analysis.CurrentApproach))
+							if len(note.Analysis.Issues) > 0 {
+								context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(note.Analysis.Issues, ", ")))
+							}
+							if len(note.Analysis.Solutions) > 0 {
+								context.WriteString(fmt.Sprintf("  Solutions: %s\n", strings.Join(note.Analysis.Solutions, ", ")))
+							}
 						}
 					}
+					context.WriteString("\n")
 				}
-				context.WriteString("\n")
 			}
 		}
 	}
 
 	// Add project goal (LOWEST PRIORITY)
 	context.WriteString(fmt.Sprintf("PROJECT GOAL:\n%s\n\n", a.projectGoal))
-
-	fmt.Println("=== END DEBUG ===\n")
 
 	return fmt.Sprintf("%s\n%s", context.String(), terminalSystemPrompt)
 }

@@ -555,3 +555,45 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 
 	return progressNote, nil
 }
+
+// GetMonitorNotesDir returns the path to the monitor notes directory for a project
+func (nm *NotesManager) GetMonitorNotesDir(projectName string) string {
+	return filepath.Join(nm.baseDir, "monitor_notes", projectName)
+}
+
+// GetUserNotes retrieves all remember notes for a specific user and project
+func (nm *NotesManager) GetUserNotes(username string, projectName string) ([]*RememberNote, error) {
+	userDir := filepath.Join(nm.baseDir, "remember", username)
+	if _, err := os.Stat(userDir); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	files, err := os.ReadDir(userDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading user directory: %w", err)
+	}
+
+	var notes []*RememberNote
+	for _, file := range files {
+		if filepath.Ext(file.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(userDir, file.Name()))
+		if err != nil {
+			continue
+		}
+
+		var note RememberNote
+		if err := json.Unmarshal(data, &note); err != nil {
+			continue
+		}
+
+		// Check if the note belongs to the specified project
+		if project, ok := note.Metadata["project"].(string); ok && project == projectName {
+			notes = append(notes, &note)
+		}
+	}
+
+	return notes, nil
+}

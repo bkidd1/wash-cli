@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/notes"
-	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/spf13/cobra"
 )
 
@@ -72,18 +71,6 @@ func Command() *cobra.Command {
 			// Save note
 			if err := notesManager.SaveUserNote(username, note); err != nil {
 				return fmt.Errorf("failed to save note: %w", err)
-			}
-
-			// Update config with remember note
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
-
-			// Add new note to remember notes
-			cfg.RememberNotes = append(cfg.RememberNotes, content)
-			if err := config.SaveConfig(cfg); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
 			}
 
 			fmt.Printf("Saved successfully at %s\n", note.Timestamp.Format(time.RFC3339))
