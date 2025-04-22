@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,27 +40,6 @@ const (
 	StatusArchived Status = "archived"
 )
 
-// CodeChange represents a high-level change in code
-type CodeChange struct {
-	BaseRecord
-	File            string   `json:"file"`                   // The file that was modified
-	OldContent      string   `json:"old_content"`            // Previous content of the file
-	NewContent      string   `json:"new_content"`            // New content of the file
-	Description     string   `json:"description"`            // High-level description of the change
-	PotentialIssues []string `json:"issues,omitempty"`       // Potential issues to watch out for
-	Alternatives    []string `json:"alternatives,omitempty"` // Alternative approaches considered
-}
-
-// SetBaseRecord implements the BaseRecord interface
-func (cc *CodeChange) SetBaseRecord(br BaseRecord) {
-	cc.BaseRecord = br
-}
-
-// GetTimestamp implements the BaseRecord interface
-func (cc *CodeChange) GetTimestamp() time.Time {
-	return cc.Timestamp
-}
-
 // Analysis represents the analysis of an interaction
 type Analysis struct {
 	Suggestions           []string `json:"suggestions,omitempty"`
@@ -69,7 +49,6 @@ type Analysis struct {
 
 // Interaction represents a single interaction between user and AI
 type Interaction struct {
-	BaseRecord
 	Timestamp   time.Time `json:"timestamp"`
 	ProjectName string    `json:"project_name"`
 	ProjectGoal string    `json:"project_goal"`
@@ -78,61 +57,44 @@ type Interaction struct {
 		FilesChanged []string `json:"files_changed,omitempty"`
 	} `json:"context"`
 	Analysis struct {
-		CurrentApproach string   `json:"current_approach"`
-		Issues          []string `json:"issues,omitempty"`
-		Solutions       []string `json:"solutions,omitempty"`
-		BestPractices   []string `json:"best_practices,omitempty"`
+		CurrentApproach       string   `json:"current_approach"`
+		AlternativeApproaches []string `json:"alternative_approaches,omitempty"`
 	} `json:"analysis"`
 	Metadata struct {
 		Tags     []string `json:"tags,omitempty"`
 		Priority Priority `json:"priority,omitempty"`
 		Status   Status   `json:"status,omitempty"`
 	} `json:"metadata"`
-}
-
-// SetBaseRecord implements the BaseRecord interface
-func (i *Interaction) SetBaseRecord(br BaseRecord) {
-	i.BaseRecord = br
-}
-
-// GetTimestamp implements the BaseRecord interface
-func (i *Interaction) GetTimestamp() time.Time {
-	return i.Timestamp
-}
-
-// RememberNote represents a user-created note from wash remember
-type RememberNote struct {
-	BaseRecord
-	Content  string                 `json:"content"`
-	Metadata map[string]interface{} `json:"metadata"`
-}
-
-// SetBaseRecord implements the BaseRecord interface
-func (n *RememberNote) SetBaseRecord(br BaseRecord) {
-	n.BaseRecord = br
-}
-
-// GetTimestamp implements the BaseRecord interface
-func (n *RememberNote) GetTimestamp() time.Time {
-	return n.Timestamp
 }
 
 // MonitorNote represents a note from wash monitor
 type MonitorNote struct {
-	BaseRecord
 	Timestamp   time.Time `json:"timestamp"`
 	ProjectName string    `json:"project_name"`
-	ProjectGoal string    `json:"project_goal"`
-	Context     struct {
-		CurrentState string   `json:"current_state"`
-		FilesChanged []string `json:"files_changed,omitempty"`
-	} `json:"context"`
-	Analysis struct {
-		CurrentApproach string   `json:"current_approach"`
-		Issues          []string `json:"issues,omitempty"`
-		Solutions       []string `json:"solutions,omitempty"`
-		BestPractices   []string `json:"best_practices,omitempty"`
-	} `json:"analysis"`
+	Interaction struct {
+		UserRequest string `json:"user_request"`
+		AIAction    string `json:"ai_action"`
+	} `json:"interaction"`
+}
+
+// ProjectProgressNote represents significant project progress and milestones
+type ProjectProgressNote struct {
+	Timestamp   time.Time `json:"timestamp"`
+	ID          string    `json:"id"`
+	ProjectName string    `json:"project_name"`
+	Type        string    `json:"type"` // e.g., "milestone", "architecture", "feature", "refactor"
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Changes     struct {
+		FilesModified []string `json:"files_modified,omitempty"`
+		FilesAdded    []string `json:"files_added,omitempty"`
+		FilesDeleted  []string `json:"files_deleted,omitempty"`
+	} `json:"changes"`
+	Impact struct {
+		Scope         string   `json:"scope"` // e.g., "local", "module", "project-wide"
+		AffectedAreas []string `json:"affected_areas,omitempty"`
+		RiskLevel     string   `json:"risk_level"` // e.g., "low", "medium", "high"
+	} `json:"impact"`
 	Metadata struct {
 		Tags     []string `json:"tags,omitempty"`
 		Priority Priority `json:"priority,omitempty"`
@@ -140,81 +102,11 @@ type MonitorNote struct {
 	} `json:"metadata"`
 }
 
-// SetBaseRecord implements the BaseRecord interface
-func (n *MonitorNote) SetBaseRecord(br BaseRecord) {
-	n.BaseRecord = br
-}
-
-// GetTimestamp implements the BaseRecord interface
-func (n *MonitorNote) GetTimestamp() time.Time {
-	return n.Timestamp
-}
-
-// FileNote represents a note from wash file
-type FileNote struct {
-	BaseRecord
-	File            string   `json:"file"`
-	Analysis        string   `json:"analysis"`
-	Issues          []string `json:"issues,omitempty"`
-	Recommendations []string `json:"recommendations,omitempty"`
-}
-
-// SetBaseRecord implements the BaseRecord interface
-func (n *FileNote) SetBaseRecord(br BaseRecord) {
-	n.BaseRecord = br
-}
-
-// GetTimestamp implements the BaseRecord interface
-func (n *FileNote) GetTimestamp() time.Time {
-	return n.Timestamp
-}
-
-// ProjectNote represents a note from wash project
-type ProjectNote struct {
-	BaseRecord
-	ProjectName string `json:"project_name"`
-	Structure   struct {
-		Files       []string `json:"files"`
-		Directories []string `json:"directories"`
-		Issues      []string `json:"issues,omitempty"`
-	} `json:"structure"`
-	Analysis struct {
-		Architecture    string   `json:"architecture"`
-		Dependencies    []string `json:"dependencies"`
-		Recommendations []string `json:"recommendations,omitempty"`
-	} `json:"analysis"`
-}
-
-// SetBaseRecord implements the BaseRecord interface
-func (n *ProjectNote) SetBaseRecord(br BaseRecord) {
-	n.BaseRecord = br
-}
-
-// GetTimestamp implements the BaseRecord interface
-func (n *ProjectNote) GetTimestamp() time.Time {
-	return n.Timestamp
-}
-
-// BugNote represents a note from wash bug
-type BugNote struct {
-	BaseRecord
-	Description      string   `json:"description"`
-	StepsToReproduce []string `json:"steps_to_reproduce"`
-	ExpectedBehavior string   `json:"expected_behavior"`
-	ActualBehavior   string   `json:"actual_behavior"`
-	Status           Status   `json:"status"`
-	Priority         Priority `json:"priority"`
-	Solution         string   `json:"solution,omitempty"`
-}
-
-// SetBaseRecord implements the BaseRecord interface
-func (n *BugNote) SetBaseRecord(br BaseRecord) {
-	n.BaseRecord = br
-}
-
-// GetTimestamp implements the BaseRecord interface
-func (n *BugNote) GetTimestamp() time.Time {
-	return n.Timestamp
+// RememberNote represents a user-created note from wash remember
+type RememberNote struct {
+	Timestamp time.Time              `json:"timestamp"`
+	Content   string                 `json:"content"`
+	Metadata  map[string]interface{} `json:"metadata"`
 }
 
 // Manager handles note storage and retrieval
@@ -419,4 +311,274 @@ func matchesCriteria(interaction *Interaction, criteria map[string]interface{}) 
 		}
 	}
 	return true
+}
+
+// SaveProjectProgress saves a project progress note
+func (nm *NotesManager) SaveProjectProgress(note *ProjectProgressNote) error {
+	note.Timestamp = time.Now()
+	note.ID = uuid.New().String()
+
+	// Create the progress directory if it doesn't exist
+	progressDir := filepath.Join(nm.baseDir, "progress")
+	if err := os.MkdirAll(progressDir, 0755); err != nil {
+		return fmt.Errorf("error creating progress directory: %w", err)
+	}
+
+	// Create a file for the note
+	noteFile := filepath.Join(progressDir, fmt.Sprintf("%s_%s.json", note.ProjectName, note.ID))
+	data, err := json.MarshalIndent(note, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling note: %w", err)
+	}
+
+	if err := os.WriteFile(noteFile, data, 0644); err != nil {
+		return fmt.Errorf("error writing note file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadProjectProgress loads all project progress notes for a given project
+func (nm *NotesManager) LoadProjectProgress(projectName string) ([]*ProjectProgressNote, error) {
+	progressDir := filepath.Join(nm.baseDir, "progress")
+	files, err := os.ReadDir(progressDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading progress directory: %w", err)
+	}
+
+	var notes []*ProjectProgressNote
+	for _, file := range files {
+		if !strings.HasPrefix(file.Name(), projectName+"_") {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(progressDir, file.Name()))
+		if err != nil {
+			return nil, fmt.Errorf("error reading note file: %w", err)
+		}
+
+		var note ProjectProgressNote
+		if err := json.Unmarshal(data, &note); err != nil {
+			return nil, fmt.Errorf("error unmarshaling note: %w", err)
+		}
+
+		notes = append(notes, &note)
+	}
+
+	return notes, nil
+}
+
+// QueryProjectProgress queries project progress notes based on criteria
+func (nm *NotesManager) QueryProjectProgress(projectName string, criteria map[string]interface{}) ([]*ProjectProgressNote, error) {
+	notes, err := nm.LoadProjectProgress(projectName)
+	if err != nil {
+		return nil, err
+	}
+
+	var filteredNotes []*ProjectProgressNote
+	for _, note := range notes {
+		if matchesProgressCriteria(note, criteria) {
+			filteredNotes = append(filteredNotes, note)
+		}
+	}
+
+	return filteredNotes, nil
+}
+
+// matchesProgressCriteria checks if a note matches the given criteria
+func matchesProgressCriteria(note *ProjectProgressNote, criteria map[string]interface{}) bool {
+	for key, value := range criteria {
+		switch key {
+		case "type":
+			if note.Type != value.(string) {
+				return false
+			}
+		case "priority":
+			if note.Metadata.Priority != value.(Priority) {
+				return false
+			}
+		case "status":
+			if note.Metadata.Status != value.(Status) {
+				return false
+			}
+		case "tag":
+			tag := value.(string)
+			found := false
+			for _, t := range note.Metadata.Tags {
+				if t == tag {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// GenerateProgressFromMonitor generates a progress note from recent monitor data
+func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration time.Duration) (*ProjectProgressNote, error) {
+	// Get recent monitor notes
+	monitorDir := filepath.Join(nm.baseDir, "monitor_notes", projectName)
+	files, err := os.ReadDir(monitorDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading monitor directory: %w", err)
+	}
+
+	// Get the cutoff time
+	cutoffTime := time.Now().Add(-duration)
+
+	var recentNotes []*MonitorNote
+	for _, file := range files {
+		if filepath.Ext(file.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(monitorDir, file.Name()))
+		if err != nil {
+			continue
+		}
+
+		var note MonitorNote
+		if err := json.Unmarshal(data, &note); err != nil {
+			continue
+		}
+
+		if note.Timestamp.After(cutoffTime) {
+			recentNotes = append(recentNotes, &note)
+		}
+	}
+
+	if len(recentNotes) == 0 {
+		return nil, fmt.Errorf("no monitor notes found in the last %v", duration)
+	}
+
+	// Analyze the notes to generate a progress summary
+	progressNote := &ProjectProgressNote{
+		ProjectName: projectName,
+		Type:        "monitor_summary",
+		Title:       fmt.Sprintf("Progress Summary - Last %v", duration),
+	}
+
+	// Track user requests and AI actions
+	userRequests := make(map[string]int) // User requests (with frequency)
+	aiActions := make(map[string]int)    // AI actions (with frequency)
+
+	for _, note := range recentNotes {
+		// Track user requests
+		if note.Interaction.UserRequest != "" {
+			userRequests[note.Interaction.UserRequest]++
+		}
+
+		// Track AI actions
+		if note.Interaction.AIAction != "" {
+			aiActions[note.Interaction.AIAction]++
+		}
+	}
+
+	// Generate focused description
+	var description strings.Builder
+	description.WriteString("Progress Summary:\n\n")
+
+	// User Requests
+	description.WriteString("User Requests:\n")
+	if len(userRequests) > 0 {
+		for request, count := range userRequests {
+			description.WriteString(fmt.Sprintf("- %s (asked %d times)\n", request, count))
+		}
+	} else {
+		description.WriteString("- No user requests tracked\n")
+	}
+	description.WriteString("\n")
+
+	// AI Actions
+	description.WriteString("AI Actions:\n")
+	if len(aiActions) > 0 {
+		for action, count := range aiActions {
+			description.WriteString(fmt.Sprintf("- %s (performed %d times)\n", action, count))
+		}
+	} else {
+		description.WriteString("- No AI actions tracked\n")
+	}
+
+	progressNote.Description = description.String()
+
+	// Set metadata
+	progressNote.Metadata.Priority = PriorityMedium
+	progressNote.Metadata.Status = StatusOpen
+	progressNote.Metadata.Tags = []string{"monitor_summary", "auto_generated"}
+
+	return progressNote, nil
+}
+
+// GetMonitorNotesDir returns the path to the monitor notes directory for a project
+func (nm *NotesManager) GetMonitorNotesDir(projectName string) string {
+	return filepath.Join(nm.baseDir, "monitor_notes", projectName)
+}
+
+// GetUserNotes retrieves all remember notes for a specific user and project
+func (nm *NotesManager) GetUserNotes(username string, projectName string) ([]*RememberNote, error) {
+	userDir := filepath.Join(nm.baseDir, "remember", username)
+	if _, err := os.Stat(userDir); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	files, err := os.ReadDir(userDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading user directory: %w", err)
+	}
+
+	var notes []*RememberNote
+	for _, file := range files {
+		if filepath.Ext(file.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(userDir, file.Name()))
+		if err != nil {
+			continue
+		}
+
+		var note RememberNote
+		if err := json.Unmarshal(data, &note); err != nil {
+			continue
+		}
+
+		// Check if the note belongs to the specified project
+		if project, ok := note.Metadata["project"].(string); ok && project == projectName {
+			notes = append(notes, &note)
+		}
+	}
+
+	return notes, nil
+}
+
+// SaveMonitorNote saves a monitor note for a project
+func (nm *NotesManager) SaveMonitorNote(projectName string, note *MonitorNote) error {
+	// Create project-specific directory
+	projectDir := filepath.Join(nm.baseDir, "monitor_notes", projectName)
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		return fmt.Errorf("error creating project directory: %w", err)
+	}
+
+	// Generate filename with timestamp
+	filename := fmt.Sprintf("%s.json", note.Timestamp.Format("2006-01-02-15-04-05"))
+	filepath := filepath.Join(projectDir, filename)
+
+	// Save note to file
+	file, err := os.Create(filepath)
+	if err != nil {
+		return fmt.Errorf("error creating note file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(note); err != nil {
+		return fmt.Errorf("error encoding note: %w", err)
+	}
+
+	return nil
 }
