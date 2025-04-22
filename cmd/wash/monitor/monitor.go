@@ -6,8 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	chatmonitor "github.com/bkidd1/wash-cli/internal/monitor/chatmonitor"
-	"github.com/bkidd1/wash-cli/pkg/config"
+	"github.com/bkidd1/wash-cli/internal/services/monitor/chatmonitor"
+	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/spf13/cobra"
 )
 

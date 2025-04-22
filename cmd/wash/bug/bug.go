@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkidd1/wash-cli/internal/analyzer"
-	"github.com/bkidd1/wash-cli/internal/tracker"
-	"github.com/bkidd1/wash-cli/pkg/config"
+	"github.com/bkidd1/wash-cli/internal/core/tracker"
+	"github.com/bkidd1/wash-cli/internal/services/analyzer"
+	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"
 )
@@ -87,12 +87,12 @@ func NewBugCommand(projectPath string, query string) (*BugCommand, error) {
 }
 
 // loadingAnimation shows a simple loading animation
-func loadingAnimation(done chan bool) {
+func loadingAnimation(ctx context.Context) {
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	i := 0
 	for {
 		select {
-		case <-done:
+		case <-ctx.Done():
 			fmt.Printf("\r") // Clear the line
 			return
 		default:
@@ -111,7 +111,15 @@ func (c *BugCommand) Execute() error {
 
 	// Read the analysis file if it exists
 	var projectContext string
-	if content, err := os.ReadFile(analysisPath); err == nil {
+	content, err := os.ReadFile(analysisPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			// Only log if it's not a "file not found" error
+			fmt.Printf("Warning: Could not read analysis file: %v\n", err)
+		}
+		// Continue with empty context if file doesn't exist or can't be read
+		projectContext = ""
+	} else {
 		// Limit context to last 2000 characters to avoid token limits
 		if len(content) > 2000 {
 			projectContext = "... (earlier context omitted) ...\n" + string(content[len(content)-2000:])
@@ -120,9 +128,12 @@ func (c *BugCommand) Execute() error {
 		}
 	}
 
-	// Create a channel to signal when analysis is done
-	done := make(chan bool)
-	go loadingAnimation(done)
+	// Create a context for the loading animation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cleanup in case of early return
+
+	// Start loading animation
+	go loadingAnimation(ctx)
 
 	// Create the system prompt for objective analysis
 	systemPrompt := `You are an expert software architect and intermediary between a human developer and their AI coding agent. 
@@ -146,7 +157,9 @@ Format your response as follows:
    - [Clear and concise explanation of why it's better than the current approach]
    
  ##Wash Notes
-   - [Relevant notes from the project's wash notes]`
+   - [Relevant notes from the project's wash notes]
+   
+ If no relevant notes are found, do not return a ##Wash Notes section`
 
 	// Get analysis from OpenAI
 	resp, err := c.analyzer.Client.CreateChatCompletion(
@@ -159,25 +172,19 @@ Format your response as follows:
 					Content: systemPrompt,
 				},
 				{
-					Role: openai.ChatMessageRoleUser,
-					Content: fmt.Sprintf(`Project Context:
-%s
-
-User's Query:
-%s
-
-Please provide objective guidance, even if it means telling me I'm doing it wrong.`, projectContext, c.query),
+					Role:    openai.ChatMessageRoleUser,
+					Content: fmt.Sprintf("Project Context:\n%s\n\nUser's Query:\n%s\n\nPlease provide objective guidance, even if it means telling me I'm doing it wrong.", projectContext, c.query),
 				},
 			},
 		},
 	)
 	if err != nil {
-		done <- true
+		cancel() // Stop the loading animation
 		return fmt.Errorf("failed to get analysis: %w", err)
 	}
 
-	// Signal that analysis is complete
-	done <- true
+	// Stop the loading animation
+	cancel()
 
 	// Print the analysis
 	fmt.Println(resp.Choices[0].Message.Content)

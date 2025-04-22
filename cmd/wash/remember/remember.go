@@ -1,13 +1,14 @@
 package remember
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/bkidd1/wash-cli/internal/notes"
+	"github.com/bkidd1/wash-cli/internal/services/notes"
 	"github.com/spf13/cobra"
 )
 
@@ -17,10 +18,23 @@ func Command() *cobra.Command {
 		Use:   "remember [content]",
 		Short: "Save something to remember",
 		Long:  `Save something to remember for your project. Items are stored in ~/.wash/remember/[project-name]/`,
-		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var content string
+			if len(args) == 0 {
+				// Interactive mode
+				fmt.Print("Enter your note: ")
+				reader := bufio.NewReader(os.Stdin)
+				input, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("failed to read input: %w", err)
+				}
+				content = strings.TrimSpace(input)
+			} else {
+				// Command line argument mode
+				content = strings.TrimSpace(strings.Join(args, " "))
+			}
+
 			// Validate content
-			content := strings.TrimSpace(args[0])
 			if content == "" {
 				return fmt.Errorf("content cannot be empty")
 			}

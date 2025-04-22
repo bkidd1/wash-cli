@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bkidd1/wash-cli/internal/notes"
 	"github.com/bkidd1/wash-cli/internal/pid"
-	"github.com/bkidd1/wash-cli/internal/screenshot"
-	"github.com/bkidd1/wash-cli/pkg/config"
+	"github.com/bkidd1/wash-cli/internal/services/notes"
+	"github.com/bkidd1/wash-cli/internal/services/screenshot"
+	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/sashabaranov/go-openai"
 )
 
