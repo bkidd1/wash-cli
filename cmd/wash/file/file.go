@@ -43,8 +43,8 @@ and maintainability.`,
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
-			// Create analyzer
-			analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey)
+			// Create analyzer with project context
+			analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
 
 			// Create a channel to signal when analysis is done
 			done := make(chan bool)

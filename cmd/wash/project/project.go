@@ -30,7 +30,23 @@ func loadingAnimation(done chan bool) {
 // Command creates the project structure analysis command
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "project [path]",
+		Use:   "project",
+		Short: "Manage project settings and analysis",
+		Long: `Manage project settings and analyze project structure for optimization opportunities.
+Provides insights into potential refactoring opportunities and project organization.`,
+	}
+
+	// Add subcommands
+	cmd.AddCommand(analyzeCommand())
+	cmd.AddCommand(goalCommand())
+
+	return cmd
+}
+
+// analyzeCommand creates the project analysis command
+func analyzeCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "analyze [path]",
 		Short: "Analyze project structure for optimization opportunities",
 		Long: `Analyzes the project structure and suggests improvements for
 organization, modularity, and maintainability. Provides insights into
@@ -44,7 +60,7 @@ potential refactoring opportunities.`,
 			}
 
 			// Create analyzer
-			analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey)
+			analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
 
 			// Get directory path
 			dirPath := "."
@@ -71,6 +87,41 @@ potential refactoring opportunities.`,
 			return nil
 		},
 	}
+}
 
-	return cmd
+// goalCommand creates the project goal command
+func goalCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "goal [goal]",
+		Short: "Set or view the project goal",
+		Long: `Set or view the project goal. This goal will be used to provide context
+for code analysis and suggestions.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load config
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			if len(args) == 0 {
+				// View current goal
+				if cfg.ProjectGoal == "" {
+					fmt.Println("No project goal set. Use 'wash project goal <goal>' to set one.")
+				} else {
+					fmt.Printf("Current project goal: %s\n", cfg.ProjectGoal)
+				}
+				return nil
+			}
+
+			// Set new goal
+			cfg.ProjectGoal = args[0]
+			if err := config.SaveConfig(cfg); err != nil {
+				return fmt.Errorf("failed to save config: %w", err)
+			}
+
+			fmt.Printf("Project goal set to: %s\n", cfg.ProjectGoal)
+			return nil
+		},
+	}
 }

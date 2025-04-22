@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/analyzer"
@@ -32,6 +33,15 @@ type CodeChange struct {
 	Issues       []string   `json:"issues,omitempty"`
 	Alternatives []string   `json:"alternatives,omitempty"`
 	GitInfo      *GitInfo   `json:"git_info,omitempty"`
+	Analysis     *Analysis  `json:"analysis,omitempty"`
+}
+
+// Analysis represents the analysis results for a code change
+type Analysis struct {
+	Timestamp      time.Time `json:"timestamp"`
+	CriticalIssues []string  `json:"critical_issues,omitempty"`
+	ShouldFix      []string  `json:"should_fix,omitempty"`
+	CouldFix       []string  `json:"could_fix,omitempty"`
 }
 
 // GitInfo contains Git-specific information about a change
@@ -158,12 +168,18 @@ func (et *EventTracker) handleEvent(event fsnotify.Event) {
 	}
 
 	// Analyze the change
-	analysis, err := et.analyzer.AnalyzeFile(context.Background(), event.Name)
-	if err != nil {
-		fmt.Printf("error analyzing file %s: %v\n", event.Name, err)
-		analysis = "Error during analysis: " + err.Error()
+	ctx := context.Background()
+	if err := et.analyzeChange(ctx, &change); err != nil {
+		fmt.Printf("error analyzing change: %v\n", err)
+		change.Description = "Error during analysis: " + err.Error()
+	} else {
+		// Use the first critical issue as description if available
+		if change.Analysis != nil && len(change.Analysis.CriticalIssues) > 0 {
+			change.Description = change.Analysis.CriticalIssues[0]
+		} else {
+			change.Description = "Code change analyzed"
+		}
 	}
-	change.Description = analysis
 
 	// Save the change
 	et.changeBuffer = append(et.changeBuffer, change)
@@ -186,7 +202,10 @@ func (et *EventTracker) handleEvent(event fsnotify.Event) {
 			Solutions       []string `json:"solutions,omitempty"`
 			BestPractices   []string `json:"best_practices,omitempty"`
 		}{
-			CurrentApproach: analysis,
+			CurrentApproach: change.Description,
+			Issues:          change.Analysis.CriticalIssues,
+			Solutions:       change.Analysis.ShouldFix,
+			BestPractices:   change.Analysis.CouldFix,
 		},
 	}
 
@@ -228,4 +247,54 @@ func (gt *GitTracker) GetChanges() ([]CodeChange, error) {
 // GetChanges returns all tracked changes for non-Git projects
 func (et *EventTracker) GetChanges() ([]CodeChange, error) {
 	return et.changeBuffer, nil
+}
+
+// analyzeChange performs analysis on a code change
+func (et *EventTracker) analyzeChange(ctx context.Context, change *CodeChange) error {
+	// Analyze each changed file
+	for _, file := range change.Files {
+		analysis, err := et.analyzer.AnalyzeFile(ctx, file)
+		if err != nil {
+			return fmt.Errorf("error analyzing file %s: %w", file, err)
+		}
+
+		// Parse the analysis into structured format
+		parsedAnalysis := parseAnalysis(analysis)
+		change.Analysis = parsedAnalysis
+	}
+	return nil
+}
+
+// parseAnalysis converts the raw analysis string into structured format
+func parseAnalysis(rawAnalysis string) *Analysis {
+	analysis := &Analysis{
+		Timestamp: time.Now(),
+	}
+
+	// Split the analysis into sections
+	sections := strings.Split(rawAnalysis, "\n\n")
+	for _, section := range sections {
+		if strings.Contains(section, "Critical! Must Fix") {
+			analysis.CriticalIssues = parseIssues(section)
+		} else if strings.Contains(section, "Should Fix") {
+			analysis.ShouldFix = parseIssues(section)
+		} else if strings.Contains(section, "Could Fix") {
+			analysis.CouldFix = parseIssues(section)
+		}
+	}
+
+	return analysis
+}
+
+// parseIssues extracts issues from a section
+func parseIssues(section string) []string {
+	var issues []string
+	lines := strings.Split(section, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+			issue := strings.TrimPrefix(strings.TrimPrefix(line, "- "), "* ")
+			issues = append(issues, issue)
+		}
+	}
+	return issues
 }
