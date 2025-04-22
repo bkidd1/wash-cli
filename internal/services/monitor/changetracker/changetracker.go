@@ -63,21 +63,21 @@ type ChangeTracker interface {
 type GitTracker struct {
 	projectPath string
 	notes       *notes.NotesManager
-	analyzer    *analyzer.Analyzer
+	analyzer    *analyzer.TerminalAnalyzer
 }
 
 // EventTracker implements ChangeTracker for non-Git projects
 type EventTracker struct {
 	projectPath  string
 	notes        *notes.NotesManager
-	analyzer     *analyzer.Analyzer
+	analyzer     *analyzer.TerminalAnalyzer
 	watcher      *fsnotify.Watcher
 	lastChange   time.Time
 	changeBuffer []CodeChange
 }
 
 // NewChangeTracker creates an appropriate tracker based on project type
-func NewChangeTracker(projectPath string, notes *notes.NotesManager, analyzer *analyzer.Analyzer) (ChangeTracker, error) {
+func NewChangeTracker(projectPath string, notes *notes.NotesManager, analyzer *analyzer.TerminalAnalyzer) (ChangeTracker, error) {
 	// Check if the project is a Git repository
 	if isGitRepo(projectPath) {
 		return &GitTracker{
