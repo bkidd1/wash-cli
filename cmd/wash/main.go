@@ -31,16 +31,16 @@ func initCommands() error {
 	// Hide the default completion command as we don't need it
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 
-	// Hide the flags section
-	rootCmd.SetHelpTemplate(`{{.Long}}
+	// Set a simple help template for root command
+	rootCmd.SetHelpTemplate(`{{with .Long}}{{. | trimTrailingWhitespaces}}
 
-Call any of the following commands with "wash [command]"
-{{range .Commands}}{{if .IsAvailableCommand}}
+{{end}}Available Commands:{{range .Commands}}{{if .IsAvailableCommand}}
   {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}
 
 Use "{{.CommandPath}} [command] --help" for more information about a command.
 `)
 
+	// Don't override the default usage template
 	return nil
 }
 
