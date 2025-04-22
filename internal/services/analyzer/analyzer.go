@@ -98,6 +98,10 @@ func (a *TerminalAnalyzer) UpdateProjectContext(projectGoal string, rememberNote
 func (a *TerminalAnalyzer) getContextualPrompt() string {
 	var context strings.Builder
 
+	fmt.Println("\n=== DEBUG: Context Data ===")
+	fmt.Printf("Project Goal: %s\n", a.projectGoal)
+	fmt.Printf("Remember Notes: %v\n", a.rememberNotes)
+
 	// Add remember notes if they exist (TOP PRIORITY)
 	if len(a.rememberNotes) > 0 {
 		context.WriteString("CRITICAL USER REMINDERS (MUST CONSIDER THESE FIRST):\n")
@@ -109,12 +113,18 @@ func (a *TerminalAnalyzer) getContextualPrompt() string {
 
 	// Add wash notes context from the most recent session (SECOND PRIORITY)
 	if session := a.sessionManager.GetCurrentSession(); session != nil {
+		fmt.Printf("Current Session ID: %s\n", session.ID)
+		fmt.Printf("Session Project Name: %s\n", session.ProjectName)
+		fmt.Printf("Session Project Goal: %s\n", session.ProjectGoal)
+
 		recentRecords := a.sessionManager.GetRecentRecords(session.ID, 5*time.Minute)
+		fmt.Printf("Number of Recent Records: %d\n", len(recentRecords))
+
 		if len(recentRecords) > 0 {
 			context.WriteString("RECENT WASH NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n")
 			for _, record := range recentRecords {
 				switch r := record.(type) {
-				case *notes.Interaction:
+				case *notes.MonitorNote:
 					context.WriteString(fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Analysis.CurrentApproach))
 					if len(r.Analysis.Issues) > 0 {
 						context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(r.Analysis.Issues, ", ")))
@@ -122,19 +132,34 @@ func (a *TerminalAnalyzer) getContextualPrompt() string {
 					if len(r.Analysis.Solutions) > 0 {
 						context.WriteString(fmt.Sprintf("  Solutions: %s\n", strings.Join(r.Analysis.Solutions, ", ")))
 					}
-				case *notes.CodeChange:
-					context.WriteString(fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Description))
-					if len(r.PotentialIssues) > 0 {
-						context.WriteString(fmt.Sprintf("  Potential Issues: %s\n", strings.Join(r.PotentialIssues, ", ")))
+				case *notes.FileNote:
+					context.WriteString(fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Analysis))
+					if len(r.Issues) > 0 {
+						context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(r.Issues, ", ")))
+					}
+				case *notes.ProjectNote:
+					context.WriteString(fmt.Sprintf("- %s: Project Analysis\n", r.Timestamp.Format("2006-01-02 15:04:05")))
+					if len(r.Structure.Issues) > 0 {
+						context.WriteString(fmt.Sprintf("  Structure Issues: %s\n", strings.Join(r.Structure.Issues, ", ")))
+					}
+				case *notes.BugNote:
+					context.WriteString(fmt.Sprintf("- %s: Bug Report\n", r.Timestamp.Format("2006-01-02 15:04:05")))
+					context.WriteString(fmt.Sprintf("  Description: %s\n", r.Description))
+					if r.Solution != "" {
+						context.WriteString(fmt.Sprintf("  Solution: %s\n", r.Solution))
 					}
 				}
 			}
 			context.WriteString("\n")
 		}
+	} else {
+		fmt.Println("No current session found")
 	}
 
 	// Add project goal (LOWEST PRIORITY)
 	context.WriteString(fmt.Sprintf("PROJECT GOAL:\n%s\n\n", a.projectGoal))
+
+	fmt.Println("=== END DEBUG ===\n")
 
 	return fmt.Sprintf("%s\n%s", context.String(), terminalSystemPrompt)
 }

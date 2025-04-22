@@ -54,7 +54,7 @@ func Command() *cobra.Command {
 			}
 
 			// Create new note
-			note := &notes.Note{
+			note := &notes.RememberNote{
 				BaseRecord: notes.BaseRecord{
 					Timestamp: time.Now(),
 				},

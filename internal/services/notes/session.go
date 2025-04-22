@@ -44,10 +44,42 @@ func NewSessionManager(baseDir string) (*SessionManager, error) {
 		return nil, fmt.Errorf("error creating sessions directory: %w", err)
 	}
 
-	return &SessionManager{
+	sm := &SessionManager{
 		sessions: make(map[string]*Session),
 		baseDir:  sessionsDir,
-	}, nil
+	}
+
+	// Load existing sessions
+	files, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading sessions directory: %w", err)
+	}
+
+	for _, file := range files {
+		if filepath.Ext(file.Name()) != ".json" {
+			continue
+		}
+
+		sessionPath := filepath.Join(sessionsDir, file.Name())
+		data, err := os.ReadFile(sessionPath)
+		if err != nil {
+			fmt.Printf("Warning: Could not read session file %s: %v\n", file.Name(), err)
+			continue
+		}
+
+		var session Session
+		if err := json.Unmarshal(data, &session); err != nil {
+			fmt.Printf("Warning: Could not parse session file %s: %v\n", file.Name(), err)
+			continue
+		}
+
+		sm.sessions[session.ID] = &session
+		if session.EndTime.IsZero() {
+			sm.currentSession = &session
+		}
+	}
+
+	return sm, nil
 }
 
 // StartSession creates a new session
@@ -175,12 +207,16 @@ func (sm *SessionManager) saveSession(session *Session) error {
 // Helper function to get record type
 func getRecordType(record interface{}) string {
 	switch record.(type) {
-	case *Interaction:
-		return "interaction"
-	case *Note:
-		return "note"
-	case *CodeChange:
-		return "code_change"
+	case *MonitorNote:
+		return "monitor_note"
+	case *RememberNote:
+		return "remember_note"
+	case *FileNote:
+		return "file_note"
+	case *ProjectNote:
+		return "project_note"
+	case *BugNote:
+		return "bug_note"
 	default:
 		return "unknown"
 	}
