@@ -326,3 +326,89 @@ func (a *TerminalAnalyzer) GetErrorFix(ctx context.Context, chatHistory string, 
 
 	return analysis, nil
 }
+
+// BugAnalysis represents the analysis of a bug
+type BugAnalysis struct {
+	Analysis           string
+	PotentialCauses    string
+	SuggestedSolutions string
+	RelatedContext     string
+}
+
+// AnalyzeBug analyzes a bug description and provides potential solutions
+func (a *TerminalAnalyzer) AnalyzeBug(ctx context.Context, description string) (*BugAnalysis, error) {
+	// Get project context from remember notes
+	contextPrompt := a.getContextualPrompt()
+
+	// Create chat completion request
+	resp, err := a.Client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: "gpt-4",
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: contextPrompt + "\n\nFor bug analysis, you MUST format your response EXACTLY as follows:\n\n# Potential Causes\n[list potential causes here]\n\n# Suggested Solutions\n[list suggested solutions here]\n\nDo not include any other sections or text.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: fmt.Sprintf("Bug description: %s", description),
+				},
+			},
+			MaxTokens: 1000,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to analyze bug: %w", err)
+	}
+
+	// Parse the response into sections
+	content := resp.Choices[0].Message.Content
+	sections := parseSections(content)
+
+	return &BugAnalysis{
+		Analysis:           "",
+		PotentialCauses:    sections["Potential Causes"],
+		SuggestedSolutions: sections["Suggested Solutions"],
+		RelatedContext:     "",
+	}, nil
+}
+
+// parseSections splits the AI response into sections
+func parseSections(content string) map[string]string {
+	sections := make(map[string]string)
+	lines := strings.Split(content, "\n")
+
+	currentSection := ""
+	var currentContent strings.Builder
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "#") {
+			// If we were building a previous section, save it
+			if currentSection != "" {
+				sections[strings.TrimSpace(currentSection)] = strings.TrimSpace(currentContent.String())
+				currentContent.Reset()
+			}
+			// Extract new section name (remove # and any leading/trailing spaces)
+			currentSection = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+		} else if currentSection != "" {
+			// Add the line to the current section
+			currentContent.WriteString(line + "\n")
+		}
+	}
+
+	// Save the last section
+	if currentSection != "" {
+		sections[strings.TrimSpace(currentSection)] = strings.TrimSpace(currentContent.String())
+	}
+
+	// Ensure required sections exist with meaningful defaults
+	requiredSections := []string{"Potential Causes", "Suggested Solutions"}
+	for _, section := range requiredSections {
+		if content, exists := sections[section]; !exists || strings.TrimSpace(content) == "" {
+			sections[section] = fmt.Sprintf("No %s information provided by the analysis", strings.ToLower(section))
+		}
+	}
+
+	return sections
+}
