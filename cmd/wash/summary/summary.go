@@ -31,29 +31,94 @@ This command provides an overview of your project's recent activity.`,
 				return fmt.Errorf("failed to create notes manager: %v", err)
 			}
 
-			// Get recent interactions
-			interactions, err := notesManager.LoadInteractions(projectName)
+			// Get all progress notes
+			progressNotes, err := notesManager.LoadProjectProgress(projectName)
 			if err != nil {
-				return fmt.Errorf("failed to load interactions: %v", err)
+				return fmt.Errorf("failed to load progress notes: %v", err)
 			}
 
-			// Print summary
-			fmt.Printf("Recent Activity Summary for %s:\n", projectName)
-			fmt.Println("----------------------------------------")
-
-			if len(interactions) == 0 {
-				fmt.Println("No recent activity found.")
+			if len(progressNotes) == 0 {
+				fmt.Println("No progress notes found.")
 				return nil
 			}
 
-			// Sort interactions by timestamp (newest first)
-			for i := len(interactions) - 1; i >= 0; i-- {
-				interaction := interactions[i]
-				if time.Since(interaction.Timestamp) <= 24*time.Hour {
-					fmt.Printf("[%s] %s: %s\n",
-						interaction.Timestamp.Format(time.RFC3339),
-						interaction.Context.CurrentState,
-						interaction.Analysis.CurrentApproach)
+			// Find notes for today or most recent day
+			today := time.Now().Truncate(24 * time.Hour)
+			var targetNotes []*notes.ProjectProgressNote
+			var targetDate time.Time
+
+			// First try to find notes from today
+			for _, note := range progressNotes {
+				if note.Timestamp.Truncate(24 * time.Hour).Equal(today) {
+					targetNotes = append(targetNotes, note)
+				}
+			}
+
+			// If no notes from today, find the most recent day with notes
+			if len(targetNotes) == 0 {
+				var mostRecent time.Time
+				for _, note := range progressNotes {
+					noteDate := note.Timestamp.Truncate(24 * time.Hour)
+					if noteDate.After(mostRecent) {
+						mostRecent = noteDate
+						targetNotes = []*notes.ProjectProgressNote{note}
+					} else if noteDate.Equal(mostRecent) {
+						targetNotes = append(targetNotes, note)
+					}
+				}
+				targetDate = mostRecent
+			} else {
+				targetDate = today
+			}
+
+			// Print summary
+			fmt.Printf("Progress Summary for %s - %s\n", projectName, targetDate.Format("2006-01-02"))
+			fmt.Println("----------------------------------------")
+
+			// Section 1: Progress Made
+			fmt.Println("\nProgress Made:")
+			fmt.Println("-------------")
+			for _, note := range targetNotes {
+				fmt.Printf("- %s\n", note.Title)
+				if note.Description != "" {
+					fmt.Printf("  %s\n", note.Description)
+				}
+			}
+
+			// Section 2: Potential Mistakes and Alternatives
+			fmt.Println("\nPotential Mistakes and Alternatives:")
+			fmt.Println("-----------------------------------")
+			for _, note := range targetNotes {
+				if note.Impact.RiskLevel != "" {
+					fmt.Printf("In '%s':\n", note.Title)
+					if note.Impact.Scope != "" {
+						fmt.Printf("  Decision: %s\n", note.Impact.Scope)
+					}
+					fmt.Printf("  Risk Level: %s\n", note.Impact.RiskLevel)
+					if len(note.Impact.AffectedAreas) > 0 {
+						fmt.Println("  Alternative Approaches:")
+						for _, area := range note.Impact.AffectedAreas {
+							fmt.Printf("  - %s\n", area)
+						}
+					}
+					fmt.Println()
+				}
+			}
+
+			// Section 3: File Changes
+			fmt.Println("\nFiles Changed:")
+			fmt.Println("-------------")
+			allFiles := make(map[string]bool)
+			for _, note := range targetNotes {
+				for _, file := range note.Changes.FilesModified {
+					allFiles[file] = true
+				}
+			}
+			if len(allFiles) == 0 {
+				fmt.Println("No files were modified.")
+			} else {
+				for file := range allFiles {
+					fmt.Printf("- %s\n", file)
 				}
 			}
 

@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/monitor/chatmonitor"
 	"github.com/bkidd1/wash-cli/internal/utils/config"
@@ -71,11 +72,23 @@ func startCmd() *cobra.Command {
 			fmt.Printf("Monitoring started for project: %s\n", projectName)
 			fmt.Println("Press Ctrl+C to stop monitoring...")
 
+			// Start timer display
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+
 			// Wait for monitor to complete
-			select {
-			case <-sigChan:
-				m.Stop()
-				return nil
+			for {
+				select {
+				case <-sigChan:
+					m.Stop()
+					return nil
+				case <-ticker.C:
+					elapsed := time.Since(m.StartTime())
+					hours := int(elapsed.Hours())
+					minutes := int(elapsed.Minutes()) % 60
+					seconds := int(elapsed.Seconds()) % 60
+					fmt.Printf("\rMonitoring time: %02d:%02d:%02d", hours, minutes, seconds)
+				}
 			}
 		},
 	}

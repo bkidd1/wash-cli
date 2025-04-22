@@ -123,16 +123,33 @@ func (m *Monitor) Stop() error {
 func (m *Monitor) monitorLoop() {
 	defer close(m.doneChan)
 
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	// Ticker for screenshot analysis (every 30 seconds)
+	screenshotTicker := time.NewTicker(30 * time.Second)
+	defer screenshotTicker.Stop()
+
+	// Ticker for progress notes (every 5 minutes)
+	progressTicker := time.NewTicker(5 * time.Minute)
+	defer progressTicker.Stop()
 
 	for {
 		select {
 		case <-m.stopChan:
 			return
-		case <-ticker.C:
+		case <-screenshotTicker.C:
 			if err := m.analyzeScreenshot(); err != nil {
 				fmt.Printf("Warning: Failed to analyze screenshot: %v\n", err)
+			}
+		case <-progressTicker.C:
+			// Generate progress note for the last 5 minutes
+			progressNote, err := m.notesManager.GenerateProgressFromMonitor(m.projectName, 5*time.Minute)
+			if err != nil {
+				fmt.Printf("Warning: Failed to generate progress note: %v\n", err)
+				continue
+			}
+
+			// Save the progress note
+			if err := m.notesManager.SaveProjectProgress(progressNote); err != nil {
+				fmt.Printf("Warning: Failed to save progress note: %v\n", err)
 			}
 		}
 	}
@@ -153,12 +170,9 @@ func formatContextForAI(records []*notes.Interaction) string {
 		if len(r.Context.FilesChanged) > 0 {
 			context.WriteString(fmt.Sprintf("Files Changed: %s\n", strings.Join(r.Context.FilesChanged, ", ")))
 		}
-		context.WriteString(fmt.Sprintf("Analysis: %s\n", r.Analysis.CurrentApproach))
-		if len(r.Analysis.Issues) > 0 {
-			context.WriteString(fmt.Sprintf("Issues: %s\n", strings.Join(r.Analysis.Issues, ", ")))
-		}
-		if len(r.Analysis.Solutions) > 0 {
-			context.WriteString(fmt.Sprintf("Solutions: %s\n", strings.Join(r.Analysis.Solutions, ", ")))
+		context.WriteString(fmt.Sprintf("Current Approach: %s\n", r.Analysis.CurrentApproach))
+		if len(r.Analysis.AlternativeApproaches) > 0 {
+			context.WriteString(fmt.Sprintf("Alternative Approaches: %s\n", strings.Join(r.Analysis.AlternativeApproaches, ", ")))
 		}
 		context.WriteString("\n")
 	}
@@ -167,14 +181,23 @@ func formatContextForAI(records []*notes.Interaction) string {
 }
 
 func (m *Monitor) analyzeScreenshot() error {
-	// Take screenshot
-	screenshotData, err := screenshot.Capture(0) // Capture primary display
-	if err != nil {
-		return fmt.Errorf("failed to capture screenshot: %v", err)
+	// Create screenshots directory if it doesn't exist
+	dir := filepath.Join(os.Getenv("HOME"), ".wash-screenshots")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create screenshots directory: %v", err)
+	}
+
+	// Generate filename with timestamp
+	filename := fmt.Sprintf("screenshot-%s.png", time.Now().Format("2006-01-02-15-04-05"))
+	screenshotPath := filepath.Join(dir, filename)
+
+	// Take screenshot of Cursor window
+	if err := screenshot.CaptureWindow("Cursor", screenshotPath); err != nil {
+		return fmt.Errorf("failed to capture Cursor window: %v", err)
 	}
 
 	// Read screenshot file
-	data, err := os.ReadFile(screenshotData.Path)
+	data, err := os.ReadFile(screenshotPath)
 	if err != nil {
 		return fmt.Errorf("failed to read screenshot file: %v", err)
 	}
@@ -200,26 +223,17 @@ func (m *Monitor) analyzeScreenshot() error {
 	contextStr := formatContextForAI(recentRecords)
 
 	// Create the analysis prompt with context
-	prompt := fmt.Sprintf(`You are an expert software architect and intermediary between a human developer and their AI coding agent. 
-Your role is to analyze the chat interactions in the provided window screenshots and do two things:
-1. Identify potential issues and improvements, and record better solutions. Especially issues that have been caused by human error/bias misguiding the AI via poor prompts/communication.
-2. Document best practices they use and the solutions to how they fix bugs.
+	prompt := fmt.Sprintf(`You are observing a conversation between a user and an AI coding assistant.
+Your task is to simply describe what is happening in this interaction.
 
-Recent context:
-%s
-
-Based on this context and the current screenshot, please analyze the interaction and provide:
-1. Current approach being taken
-2. Any potential issues or improvements
-3. Better solutions or approaches
-4. Best practices observed
+Based on the screenshot, please describe:
+1. What the user is asking or requesting
+2. What the AI assistant is doing in response
 
 Format your response as a JSON object with the following structure:
 {
-    "current_approach": "string",
-    "issues": ["string"],
-    "solutions": ["string"],
-    "best_practices": ["string"]
+    "user_request": "brief description of what the user is asking",
+    "ai_action": "brief description of what the AI is doing"
 }`, contextStr)
 
 	// Create the chat completion request
@@ -253,43 +267,30 @@ Format your response as a JSON object with the following structure:
 
 	// Parse the response into an analysis struct
 	var analysis struct {
-		CurrentApproach string   `json:"current_approach"`
-		Issues          []string `json:"issues"`
-		Solutions       []string `json:"solutions"`
-		BestPractices   []string `json:"best_practices"`
+		UserRequest string `json:"user_request"`
+		AIAction    string `json:"ai_action"`
 	}
 
 	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &analysis); err != nil {
 		return fmt.Errorf("failed to parse analysis response: %v", err)
 	}
 
-	// Create monitor note
-	interaction := &notes.MonitorNote{
+	// Create a new monitor note
+	note := &notes.MonitorNote{
 		Timestamp:   time.Now(),
 		ProjectName: m.projectName,
-		ProjectGoal: m.cfg.ProjectGoal,
-		Context: struct {
-			CurrentState string   `json:"current_state"`
-			FilesChanged []string `json:"files_changed,omitempty"`
+		Interaction: struct {
+			UserRequest string `json:"user_request"`
+			AIAction    string `json:"ai_action"`
 		}{
-			CurrentState: "Analyzing chat interaction",
-		},
-		Analysis: struct {
-			CurrentApproach string   `json:"current_approach"`
-			Issues          []string `json:"issues,omitempty"`
-			Solutions       []string `json:"solutions,omitempty"`
-			BestPractices   []string `json:"best_practices,omitempty"`
-		}{
-			CurrentApproach: analysis.CurrentApproach,
-			Issues:          analysis.Issues,
-			Solutions:       analysis.Solutions,
-			BestPractices:   analysis.BestPractices,
+			UserRequest: analysis.UserRequest,
+			AIAction:    analysis.AIAction,
 		},
 	}
 
 	// Save note to file
 	noteFile := filepath.Join(m.notesDir, fmt.Sprintf("monitor_%s.json", time.Now().Format("2006-01-02-15-04-05")))
-	noteData, err := json.MarshalIndent(interaction, "", "  ")
+	noteData, err := json.MarshalIndent(note, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal monitor note: %v", err)
 	}
@@ -299,4 +300,9 @@ Format your response as a JSON object with the following structure:
 	}
 
 	return nil
+}
+
+// StartTime returns the time when the monitor was started
+func (m *Monitor) StartTime() time.Time {
+	return m.startTime
 }

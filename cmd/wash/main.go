@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/bkidd1/wash-cli/cmd/wash/bug"
 	"github.com/bkidd1/wash-cli/cmd/wash/file"
 	"github.com/bkidd1/wash-cli/cmd/wash/monitor"
 	"github.com/bkidd1/wash-cli/cmd/wash/project"
@@ -25,6 +26,7 @@ func initCommands() error {
 	rootCmd.AddCommand(monitor.Command())
 	rootCmd.AddCommand(remember.Command())
 	rootCmd.AddCommand(summary.Command())
+	rootCmd.AddCommand(bug.Command())
 
 	// Hide the default completion command as we don't need it
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true

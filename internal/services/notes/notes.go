@@ -57,10 +57,8 @@ type Interaction struct {
 		FilesChanged []string `json:"files_changed,omitempty"`
 	} `json:"context"`
 	Analysis struct {
-		CurrentApproach string   `json:"current_approach"`
-		Issues          []string `json:"issues,omitempty"`
-		Solutions       []string `json:"solutions,omitempty"`
-		BestPractices   []string `json:"best_practices,omitempty"`
+		CurrentApproach       string   `json:"current_approach"`
+		AlternativeApproaches []string `json:"alternative_approaches,omitempty"`
 	} `json:"analysis"`
 	Metadata struct {
 		Tags     []string `json:"tags,omitempty"`
@@ -73,22 +71,10 @@ type Interaction struct {
 type MonitorNote struct {
 	Timestamp   time.Time `json:"timestamp"`
 	ProjectName string    `json:"project_name"`
-	ProjectGoal string    `json:"project_goal"`
-	Context     struct {
-		CurrentState string   `json:"current_state"`
-		FilesChanged []string `json:"files_changed,omitempty"`
-	} `json:"context"`
-	Analysis struct {
-		CurrentApproach string   `json:"current_approach"`
-		Issues          []string `json:"issues,omitempty"`
-		Solutions       []string `json:"solutions,omitempty"`
-		BestPractices   []string `json:"best_practices,omitempty"`
-	} `json:"analysis"`
-	Metadata struct {
-		Tags     []string `json:"tags,omitempty"`
-		Priority Priority `json:"priority,omitempty"`
-		Status   Status   `json:"status,omitempty"`
-	} `json:"metadata"`
+	Interaction struct {
+		UserRequest string `json:"user_request"`
+		AIAction    string `json:"ai_action"`
+	} `json:"interaction"`
 }
 
 // ProjectProgressNote represents significant project progress and milestones
@@ -476,74 +462,45 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 		Title:       fmt.Sprintf("Progress Summary - Last %v", duration),
 	}
 
-	// Track changes and insights
-	changes := make(map[string]bool)  // Files that were modified
-	progress := make(map[string]int)  // Progress made (with frequency)
-	errors := make(map[string]int)    // Potential errors and suboptimal approaches
-	solutions := make(map[string]int) // Suggested solutions and improvements
+	// Track user requests and AI actions
+	userRequests := make(map[string]int) // User requests (with frequency)
+	aiActions := make(map[string]int)    // AI actions (with frequency)
 
 	for _, note := range recentNotes {
-		// Track file changes
-		for _, file := range note.Context.FilesChanged {
-			changes[file] = true
+		// Track user requests
+		if note.Interaction.UserRequest != "" {
+			userRequests[note.Interaction.UserRequest]++
 		}
 
-		// Track progress made
-		if note.Analysis.CurrentApproach != "" {
-			progress[note.Analysis.CurrentApproach]++
+		// Track AI actions
+		if note.Interaction.AIAction != "" {
+			aiActions[note.Interaction.AIAction]++
 		}
-
-		// Track potential errors and suboptimal approaches
-		for _, issue := range note.Analysis.Issues {
-			errors[issue]++
-		}
-
-		// Track suggested solutions
-		for _, solution := range note.Analysis.Solutions {
-			solutions[solution]++
-		}
-	}
-
-	// Set the changes
-	progressNote.Changes.FilesModified = make([]string, 0, len(changes))
-	for file := range changes {
-		progressNote.Changes.FilesModified = append(progressNote.Changes.FilesModified, file)
 	}
 
 	// Generate focused description
 	var description strings.Builder
 	description.WriteString("Progress Summary:\n\n")
 
-	// Progress Made
-	description.WriteString("Progress Made:\n")
-	if len(progress) > 0 {
-		for item := range progress {
-			description.WriteString(fmt.Sprintf("- %s\n", item))
+	// User Requests
+	description.WriteString("User Requests:\n")
+	if len(userRequests) > 0 {
+		for request, count := range userRequests {
+			description.WriteString(fmt.Sprintf("- %s (asked %d times)\n", request, count))
 		}
 	} else {
-		description.WriteString("- No significant progress tracked\n")
+		description.WriteString("- No user requests tracked\n")
 	}
 	description.WriteString("\n")
 
-	// Potential Errors
-	description.WriteString("Potential Errors:\n")
-	if len(errors) > 0 {
-		for error, count := range errors {
-			description.WriteString(fmt.Sprintf("- %s (noted %d times)\n", error, count))
+	// AI Actions
+	description.WriteString("AI Actions:\n")
+	if len(aiActions) > 0 {
+		for action, count := range aiActions {
+			description.WriteString(fmt.Sprintf("- %s (performed %d times)\n", action, count))
 		}
 	} else {
-		description.WriteString("- No potential errors identified\n")
-	}
-	description.WriteString("\n")
-
-	// Suggested Solutions
-	description.WriteString("Suggested Solutions:\n")
-	if len(solutions) > 0 {
-		for solution, count := range solutions {
-			description.WriteString(fmt.Sprintf("- %s (suggested %d times)\n", solution, count))
-		}
-	} else {
-		description.WriteString("- No solutions suggested\n")
+		description.WriteString("- No AI actions tracked\n")
 	}
 
 	progressNote.Description = description.String()

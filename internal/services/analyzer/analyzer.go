@@ -16,9 +16,9 @@ import (
 const (
 	terminalSystemPrompt = `You are an expert software architect and intermediary between a human developer and their AI coding agent. Your role is to analyze their code and interactions to identify potential issues and improvements. Especially issues that may have been caused by human error/bias misguiding the AI via poor prompts/communication.
 
-CRITICAL: The reminders are the highest priority context. They may indicate how an issue was succesfully solved in the past.
+CRITICAL: The reminders are the highest priority context. They usually indicate how an issue was succesfully solved in the past - or how the user prefers to solve issues. AS LONG AS THEY ARE RELEVENT TO THE ISSUE AT HAND, you should consider them first.
 
-The wash notes provide additional context about recent work and decisions. Use these to inform your analysis, but prioritize the reminders.
+The wash notes also provide additional context about recent work and decisions. Use these to inform your analysis as well if relevant to the issue at hand.
 
 Focus your analysis on three priority levels:
 
@@ -161,13 +161,8 @@ func (a *TerminalAnalyzer) getContextualPrompt() string {
 						}
 
 						if note.Timestamp.After(cutoff) {
-							context.WriteString(fmt.Sprintf("- %s: %s\n", note.Timestamp.Format("2006-01-02 15:04:05"), note.Analysis.CurrentApproach))
-							if len(note.Analysis.Issues) > 0 {
-								context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(note.Analysis.Issues, ", ")))
-							}
-							if len(note.Analysis.Solutions) > 0 {
-								context.WriteString(fmt.Sprintf("  Solutions: %s\n", strings.Join(note.Analysis.Solutions, ", ")))
-							}
+							context.WriteString(fmt.Sprintf("- %s: User asked '%s'\n", note.Timestamp.Format("2006-01-02 15:04:05"), note.Interaction.UserRequest))
+							context.WriteString(fmt.Sprintf("  AI responded: %s\n", note.Interaction.AIAction))
 						}
 					}
 					context.WriteString("\n")
