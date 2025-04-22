@@ -18,7 +18,7 @@ const (
 
 CRITICAL: The reminders are the highest priority context. They may indicate how an issue was succesfully solved in the past.
 
-The wash notes provide additional context about work and decisions. Use these to inform your analysis, but prioritize the reminders.
+The wash notes provide additional context about recent work and decisions. Use these to inform your analysis, but prioritize the reminders.
 
 Focus your analysis on three priority levels:
 
