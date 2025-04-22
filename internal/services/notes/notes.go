@@ -597,3 +597,31 @@ func (nm *NotesManager) GetUserNotes(username string, projectName string) ([]*Re
 
 	return notes, nil
 }
+
+// SaveMonitorNote saves a monitor note for a project
+func (nm *NotesManager) SaveMonitorNote(projectName string, note *MonitorNote) error {
+	// Create project-specific directory
+	projectDir := filepath.Join(nm.baseDir, "monitor_notes", projectName)
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		return fmt.Errorf("error creating project directory: %w", err)
+	}
+
+	// Generate filename with timestamp
+	filename := fmt.Sprintf("%s.json", note.Timestamp.Format("2006-01-02-15-04-05"))
+	filepath := filepath.Join(projectDir, filename)
+
+	// Save note to file
+	file, err := os.Create(filepath)
+	if err != nil {
+		return fmt.Errorf("error creating note file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(note); err != nil {
+		return fmt.Errorf("error encoding note: %w", err)
+	}
+
+	return nil
+}
