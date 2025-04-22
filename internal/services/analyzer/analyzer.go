@@ -14,7 +14,13 @@ import (
 )
 
 const (
-	terminalSystemPrompt = `You are an expert software architect and intermediary between a human developer and their AI coding agent. Your role is to analyze their code and interactions to identify potential issues and improvements. Especially issues that may have been caused by human error/bias misguiding the AI via poor prompts/communication. Focus on three priority levels:
+	terminalSystemPrompt = `You are an expert software architect and intermediary between a human developer and their AI coding agent. Your role is to analyze their code and interactions to identify potential issues and improvements. Especially issues that may have been caused by human error/bias misguiding the AI via poor prompts/communication.
+
+CRITICAL: The reminders are the highest priority context. They may indicate ways an issue has been succesfully solved in the past.
+
+The wash notes provide additional context about recent work and decisions. Use these to inform your analysis, but prioritize the reminders.
+
+Focus your analysis on three priority levels:
 
 1. Critical! Must Fix
    Security vulnerabilities
@@ -22,6 +28,7 @@ const (
    Performance bottlenecks
    Major architectural flaws
    Breaking changes
+   Issues related to user reminders
 
 2. Should Fix
    Code maintainability issues
@@ -42,7 +49,7 @@ For each issue identified, provide a concise and clear description of the proble
 
 It may also be the case that the code is currently optimal and changing things would be unneeded. If no issues are found at a particular priority level, say "No issues found". Don't print any response for subcriteria if you find no issue.
 
-DO NOT include any introductory text, summaries, or conclusions. Start directly with the priority levels and their issues.`
+DO NOT include any introductory text, summaries, conclusions or direct references to the provided context. Start directly with the priority levels and their issues.`
 )
 
 // TerminalAnalyzer represents a code analyzer that returns formatted terminal output
@@ -57,13 +64,19 @@ type TerminalAnalyzer struct {
 // NewTerminalAnalyzer creates a new terminal analyzer
 func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []string) *TerminalAnalyzer {
 	client := openai.NewClient(apiKey)
-	// Get current working directory name as project name
-	wd, err := os.Getwd()
-	if err != nil {
-		wd = "default"
+
+	// Create wash directory if it doesn't exist
+	washDir := filepath.Join(os.Getenv("HOME"), ".wash")
+	if err := os.MkdirAll(washDir, 0755); err != nil {
+		fmt.Printf("Warning: Could not create wash directory: %v\n", err)
 	}
-	projectName := filepath.Base(wd)
-	sessionManager, _ := notes.NewSessionManager(projectName)
+
+	sessionManager, err := notes.NewSessionManager(washDir)
+	if err != nil {
+		fmt.Printf("Warning: Could not create session manager: %v\n", err)
+		sessionManager = nil
+	}
+
 	return &TerminalAnalyzer{
 		Client: client,
 		cfg: &config.Config{
@@ -83,37 +96,47 @@ func (a *TerminalAnalyzer) UpdateProjectContext(projectGoal string, rememberNote
 
 // getContextualPrompt returns the system prompt with project context
 func (a *TerminalAnalyzer) getContextualPrompt() string {
-	context := fmt.Sprintf("The user's end-goal is %s", a.projectGoal)
+	var context strings.Builder
+
+	// Add remember notes if they exist (TOP PRIORITY)
 	if len(a.rememberNotes) > 0 {
-		context += fmt.Sprintf(", and they want to remind you that:\n%s", strings.Join(a.rememberNotes, "\n"))
+		context.WriteString("CRITICAL USER REMINDERS (MUST CONSIDER THESE FIRST):\n")
+		for i, note := range a.rememberNotes {
+			context.WriteString(fmt.Sprintf("%d. %s\n", i+1, note))
+		}
+		context.WriteString("\n")
 	}
 
-	// Add wash notes context from the most recent session
+	// Add wash notes context from the most recent session (SECOND PRIORITY)
 	if session := a.sessionManager.GetCurrentSession(); session != nil {
 		recentRecords := a.sessionManager.GetRecentRecords(session.ID, 5*time.Minute)
 		if len(recentRecords) > 0 {
-			context += "\n\nRecent wash notes context:\n"
+			context.WriteString("RECENT WASH NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n")
 			for _, record := range recentRecords {
 				switch r := record.(type) {
 				case *notes.Interaction:
-					context += fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Analysis.CurrentApproach)
+					context.WriteString(fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Analysis.CurrentApproach))
 					if len(r.Analysis.Issues) > 0 {
-						context += fmt.Sprintf("  Issues: %s\n", strings.Join(r.Analysis.Issues, ", "))
+						context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(r.Analysis.Issues, ", ")))
 					}
 					if len(r.Analysis.Solutions) > 0 {
-						context += fmt.Sprintf("  Solutions: %s\n", strings.Join(r.Analysis.Solutions, ", "))
+						context.WriteString(fmt.Sprintf("  Solutions: %s\n", strings.Join(r.Analysis.Solutions, ", ")))
 					}
 				case *notes.CodeChange:
-					context += fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Description)
+					context.WriteString(fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Description))
 					if len(r.PotentialIssues) > 0 {
-						context += fmt.Sprintf("  Potential Issues: %s\n", strings.Join(r.PotentialIssues, ", "))
+						context.WriteString(fmt.Sprintf("  Potential Issues: %s\n", strings.Join(r.PotentialIssues, ", ")))
 					}
 				}
 			}
+			context.WriteString("\n")
 		}
 	}
 
-	return fmt.Sprintf("%s\n\n%s", context, terminalSystemPrompt)
+	// Add project goal (LOWEST PRIORITY)
+	context.WriteString(fmt.Sprintf("PROJECT GOAL:\n%s\n\n", a.projectGoal))
+
+	return fmt.Sprintf("%s\n%s", context.String(), terminalSystemPrompt)
 }
 
 // AnalyzeFile analyzes a single file and returns formatted terminal output
