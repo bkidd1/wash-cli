@@ -30,24 +30,10 @@ func loadingAnimation(done chan bool) {
 // Command creates the project command
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "project",
-		Short: "Manage project settings and analysis",
-		Long:  `Manage project settings and analyze project structure for optimization opportunities.`,
-	}
-
-	cmd.AddCommand(analyzeCommand())
-	cmd.AddCommand(goalCommand())
-
-	return cmd
-}
-
-// analyzeCommand creates the analyze subcommand
-func analyzeCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "analyze [path]",
-		Short: "Analyze project structure for optimization opportunities",
-		Long: `Analyzes the project structure and suggests improvements to organization,
-architecture, and code structure. The analysis focuses on maintainability,
+		Use:   "project [path]",
+		Short: "Wash project structure for optimization opportunities",
+		Long: `Washes the project structure and suggests improvements to organization,
+architecture, and code structure. The washing focuses on maintainability,
 scalability, and best practices.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -66,52 +52,25 @@ scalability, and best practices.`,
 			// Create analyzer with project context
 			analyzer := analyzer.NewTerminalAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
 
-			// Analyze project structure
+			// Create a channel to signal when washing is done
+			done := make(chan bool)
+			go loadingAnimation(done)
+
+			// Wash project structure
 			result, err := analyzer.AnalyzeProjectStructure(context.Background(), path)
 			if err != nil {
-				return fmt.Errorf("failed to analyze project: %w", err)
+				done <- true
+				return fmt.Errorf("failed to wash project: %w", err)
 			}
+
+			// Signal that washing is complete
+			done <- true
 
 			// Print results
 			fmt.Println(result)
 			return nil
 		},
 	}
-}
 
-// goalCommand creates the goal subcommand
-func goalCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "goal [goal]",
-		Short: "Set or view the project goal",
-		Long: `Sets or views the project goal. The goal is used to provide context
-for analysis and suggestions. If no goal is provided, the current goal is displayed.`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Load config
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
-
-			// If no goal provided, display current goal
-			if len(args) == 0 {
-				if cfg.ProjectGoal == "" {
-					fmt.Println("No project goal set.")
-				} else {
-					fmt.Printf("Current project goal: %s\n", cfg.ProjectGoal)
-				}
-				return nil
-			}
-
-			// Set new goal
-			cfg.ProjectGoal = args[0]
-			if err := config.SaveConfig(cfg); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
-			}
-
-			fmt.Printf("Project goal set to: %s\n", cfg.ProjectGoal)
-			return nil
-		},
-	}
+	return cmd
 }
