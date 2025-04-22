@@ -39,26 +39,45 @@ Limit yourself to one "Could Fix" per response.
 
 For each issue identified, provide a concise and clear description of the problem.
 
-It may also be the case that the code is currently optimal and changing things would be unneeded. If no issues are found at a particular priority level, say "No issues found".
+It may also be the case that the code is currently optimal and changing things would be unneeded. If no issues are found at a particular priority level, say "No issues found". Don't print any response for subcriteria if you find no issue.
 
 DO NOT include any introductory text, summaries, or conclusions. Start directly with the priority levels and their issues.`
 )
 
 // Analyzer represents a code analyzer
 type Analyzer struct {
-	Client *openai.Client
-	cfg    *config.Config
+	Client        *openai.Client
+	cfg           *config.Config
+	projectGoal   string
+	rememberNotes []string
 }
 
 // NewAnalyzer creates a new code analyzer
-func NewAnalyzer(apiKey string) *Analyzer {
+func NewAnalyzer(apiKey string, projectGoal string, rememberNotes []string) *Analyzer {
 	client := openai.NewClient(apiKey)
 	return &Analyzer{
 		Client: client,
 		cfg: &config.Config{
 			OpenAIKey: apiKey,
 		},
+		projectGoal:   projectGoal,
+		rememberNotes: rememberNotes,
 	}
+}
+
+// UpdateProjectContext updates the project goal and remember notes
+func (a *Analyzer) UpdateProjectContext(projectGoal string, rememberNotes []string) {
+	a.projectGoal = projectGoal
+	a.rememberNotes = rememberNotes
+}
+
+// getContextualPrompt returns the system prompt with project context
+func (a *Analyzer) getContextualPrompt() string {
+	context := fmt.Sprintf("The user's end-goal is %s", a.projectGoal)
+	if len(a.rememberNotes) > 0 {
+		context += fmt.Sprintf(", and they want to remind you that:\n%s", strings.Join(a.rememberNotes, "\n"))
+	}
+	return fmt.Sprintf("%s\n\n%s", context, systemPrompt)
 }
 
 // AnalyzeFile analyzes a single file for potential optimizations and improvements
@@ -75,7 +94,7 @@ func (a *Analyzer) AnalyzeFile(ctx context.Context, filePath string) (string, er
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt,
+					Content: a.getContextualPrompt(),
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -127,7 +146,7 @@ func (a *Analyzer) AnalyzeProjectStructure(ctx context.Context, dirPath string) 
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt + "\n\nFocus on project structure, organization, and architecture. DO NOT include any introductory text or summaries.",
+					Content: a.getContextualPrompt() + "\n\nFocus on project structure, organization, and architecture. DO NOT include any introductory text or summaries.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -158,7 +177,7 @@ func (a *Analyzer) AnalyzeChat(ctx context.Context, chatHistory string) (string,
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt + "\n\nFocus on the interaction patterns and communication effectiveness.",
+					Content: a.getContextualPrompt() + "\n\nFocus on the interaction patterns and communication effectiveness.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -189,7 +208,7 @@ func (a *Analyzer) AnalyzeChatSummary(ctx context.Context, summary string) (stri
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt + "\n\nFocus on the overall interaction patterns and long-term improvements.",
+					Content: a.getContextualPrompt() + "\n\nFocus on the overall interaction patterns and long-term improvements.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -220,7 +239,7 @@ func (a *Analyzer) GetErrorFix(ctx context.Context, chatHistory string, errorTyp
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt + fmt.Sprintf("\n\nFocus on fixing the specific error type: %s", errorType),
+					Content: a.getContextualPrompt() + fmt.Sprintf("\n\nFocus on fixing the specific error type: %s", errorType),
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,

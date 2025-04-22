@@ -69,8 +69,8 @@ func NewBugCommand(projectPath string, query string) (*BugCommand, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Initialize analyzer
-	analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey)
+	// Initialize analyzer with project context
+	analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
 
 	// Load project state
 	state, err := tracker.NewProjectState(projectPath)
