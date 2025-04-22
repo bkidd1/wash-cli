@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -274,21 +275,82 @@ For each section, provide multiple bullet points where relevant. Each bullet poi
 		return fmt.Errorf("failed to delete screenshot: %v", err)
 	}
 
-	// Append the analysis to the notes file with a timestamp
-	analysisPath := filepath.Join(m.notesDir, "chat_analysis.txt")
+	// Parse the analysis into sections
 	analysis := resp.Choices[0].Message.Content
+	currentApproach := ""
+	issues := []string{}
+	solutions := []string{}
+	bestPractices := []string{}
 
-	// Open file in append mode
-	f, err := os.OpenFile(analysisPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open analysis file: %v", err)
+	// Simple parsing of the analysis text
+	lines := strings.Split(analysis, "\n")
+	currentSection := ""
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(line, "## Current Approach"):
+			currentSection = "approach"
+		case strings.HasPrefix(line, "## Issues"):
+			currentSection = "issues"
+		case strings.HasPrefix(line, "## Solutions"):
+			currentSection = "solutions"
+		case strings.HasPrefix(line, "## Best Practices"):
+			currentSection = "practices"
+		case strings.HasPrefix(line, "- "):
+			content := strings.TrimPrefix(line, "- ")
+			switch currentSection {
+			case "approach":
+				currentApproach += content + " "
+			case "issues":
+				issues = append(issues, content)
+			case "solutions":
+				solutions = append(solutions, content)
+			case "practices":
+				bestPractices = append(bestPractices, content)
+			}
+		}
 	}
-	defer f.Close()
 
-	// Write the analysis with a timestamp
-	timestamp := time.Now().Format("1/2/2006, 3:04:05 PM")
-	if _, err := f.WriteString(fmt.Sprintf("\n\n### Analysis at %s\n\n%s\n", timestamp, analysis)); err != nil {
-		return fmt.Errorf("failed to write analysis: %v", err)
+	// Create and save an interaction
+	interaction := &notes.MonitorNote{
+		Timestamp:   time.Now(),
+		ProjectName: filepath.Base(m.notesDir),
+		ProjectGoal: "Monitor chat interactions and analyze development patterns",
+		Context: struct {
+			CurrentState string   `json:"current_state"`
+			FilesChanged []string `json:"files_changed,omitempty"`
+		}{
+			CurrentState: "Monitoring chat interactions",
+		},
+		Analysis: struct {
+			CurrentApproach string   `json:"current_approach"`
+			Issues          []string `json:"issues,omitempty"`
+			Solutions       []string `json:"solutions,omitempty"`
+			BestPractices   []string `json:"best_practices,omitempty"`
+		}{
+			CurrentApproach: strings.TrimSpace(currentApproach),
+			Issues:          issues,
+			Solutions:       solutions,
+			BestPractices:   bestPractices,
+		},
+		Metadata: struct {
+			Tags     []string       `json:"tags,omitempty"`
+			Priority notes.Priority `json:"priority,omitempty"`
+			Status   notes.Status   `json:"status,omitempty"`
+		}{
+			Tags:     []string{"monitor", "analysis"},
+			Priority: notes.PriorityMedium,
+			Status:   notes.StatusOpen,
+		},
+	}
+
+	// Save the interaction using the session manager
+	if err := m.sessionManager.AddRecord(interaction); err != nil {
+		return fmt.Errorf("failed to save interaction: %v", err)
 	}
 
 	return nil

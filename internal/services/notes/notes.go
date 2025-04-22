@@ -100,20 +100,120 @@ func (i *Interaction) GetTimestamp() time.Time {
 	return i.Timestamp
 }
 
-// Note represents a single note in the system
-type Note struct {
+// RememberNote represents a user-created note from wash remember
+type RememberNote struct {
 	BaseRecord
 	Content  string                 `json:"content"`
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
 // SetBaseRecord implements the BaseRecord interface
-func (n *Note) SetBaseRecord(br BaseRecord) {
+func (n *RememberNote) SetBaseRecord(br BaseRecord) {
 	n.BaseRecord = br
 }
 
 // GetTimestamp implements the BaseRecord interface
-func (n *Note) GetTimestamp() time.Time {
+func (n *RememberNote) GetTimestamp() time.Time {
+	return n.Timestamp
+}
+
+// MonitorNote represents a note from wash monitor
+type MonitorNote struct {
+	BaseRecord
+	Timestamp   time.Time `json:"timestamp"`
+	ProjectName string    `json:"project_name"`
+	ProjectGoal string    `json:"project_goal"`
+	Context     struct {
+		CurrentState string   `json:"current_state"`
+		FilesChanged []string `json:"files_changed,omitempty"`
+	} `json:"context"`
+	Analysis struct {
+		CurrentApproach string   `json:"current_approach"`
+		Issues          []string `json:"issues,omitempty"`
+		Solutions       []string `json:"solutions,omitempty"`
+		BestPractices   []string `json:"best_practices,omitempty"`
+	} `json:"analysis"`
+	Metadata struct {
+		Tags     []string `json:"tags,omitempty"`
+		Priority Priority `json:"priority,omitempty"`
+		Status   Status   `json:"status,omitempty"`
+	} `json:"metadata"`
+}
+
+// SetBaseRecord implements the BaseRecord interface
+func (n *MonitorNote) SetBaseRecord(br BaseRecord) {
+	n.BaseRecord = br
+}
+
+// GetTimestamp implements the BaseRecord interface
+func (n *MonitorNote) GetTimestamp() time.Time {
+	return n.Timestamp
+}
+
+// FileNote represents a note from wash file
+type FileNote struct {
+	BaseRecord
+	File            string   `json:"file"`
+	Analysis        string   `json:"analysis"`
+	Issues          []string `json:"issues,omitempty"`
+	Recommendations []string `json:"recommendations,omitempty"`
+}
+
+// SetBaseRecord implements the BaseRecord interface
+func (n *FileNote) SetBaseRecord(br BaseRecord) {
+	n.BaseRecord = br
+}
+
+// GetTimestamp implements the BaseRecord interface
+func (n *FileNote) GetTimestamp() time.Time {
+	return n.Timestamp
+}
+
+// ProjectNote represents a note from wash project
+type ProjectNote struct {
+	BaseRecord
+	ProjectName string `json:"project_name"`
+	Structure   struct {
+		Files       []string `json:"files"`
+		Directories []string `json:"directories"`
+		Issues      []string `json:"issues,omitempty"`
+	} `json:"structure"`
+	Analysis struct {
+		Architecture    string   `json:"architecture"`
+		Dependencies    []string `json:"dependencies"`
+		Recommendations []string `json:"recommendations,omitempty"`
+	} `json:"analysis"`
+}
+
+// SetBaseRecord implements the BaseRecord interface
+func (n *ProjectNote) SetBaseRecord(br BaseRecord) {
+	n.BaseRecord = br
+}
+
+// GetTimestamp implements the BaseRecord interface
+func (n *ProjectNote) GetTimestamp() time.Time {
+	return n.Timestamp
+}
+
+// BugNote represents a note from wash bug
+type BugNote struct {
+	BaseRecord
+	Description      string   `json:"description"`
+	StepsToReproduce []string `json:"steps_to_reproduce"`
+	ExpectedBehavior string   `json:"expected_behavior"`
+	ActualBehavior   string   `json:"actual_behavior"`
+	Status           Status   `json:"status"`
+	Priority         Priority `json:"priority"`
+	Solution         string   `json:"solution,omitempty"`
+}
+
+// SetBaseRecord implements the BaseRecord interface
+func (n *BugNote) SetBaseRecord(br BaseRecord) {
+	n.BaseRecord = br
+}
+
+// GetTimestamp implements the BaseRecord interface
+func (n *BugNote) GetTimestamp() time.Time {
 	return n.Timestamp
 }
 
@@ -128,13 +228,13 @@ func NewManager() *Manager {
 }
 
 // Save stores a note
-func (m *Manager) Save(note *Note) error {
+func (m *Manager) Save(note *RememberNote) error {
 	// TODO: Implement actual storage
 	return nil
 }
 
 // Get retrieves notes matching the given criteria
-func (m *Manager) Get(filter map[string]interface{}) ([]*Note, error) {
+func (m *Manager) Get(filter map[string]interface{}) ([]*RememberNote, error) {
 	// TODO: Implement actual retrieval
 	return nil, nil
 }
@@ -209,7 +309,7 @@ func (nm *NotesManager) SaveInteraction(interaction *Interaction) error {
 }
 
 // SaveUserNote saves a user-specific note
-func (nm *NotesManager) SaveUserNote(username string, note *Note) error {
+func (nm *NotesManager) SaveUserNote(username string, note *RememberNote) error {
 	userDir := filepath.Join(nm.baseDir, "remember", username)
 	if err := os.MkdirAll(userDir, 0755); err != nil {
 		return fmt.Errorf("error creating user directory: %w", err)
@@ -249,19 +349,24 @@ func (nm *NotesManager) LoadInteractions(projectName string) ([]*Interaction, er
 
 	var interactions []*Interaction
 	for _, file := range files {
-		if file.IsDir() {
+		// Skip non-JSON files
+		if filepath.Ext(file.Name()) != ".json" {
 			continue
 		}
 
 		filepath := filepath.Join(projectDir, file.Name())
-		content, err := os.ReadFile(filepath)
+		data, err := os.ReadFile(filepath)
 		if err != nil {
-			return nil, fmt.Errorf("error reading interaction file: %w", err)
+			// Log error but continue with other files
+			fmt.Printf("Warning: Could not read file %s: %v\n", file.Name(), err)
+			continue
 		}
 
 		var interaction Interaction
-		if err := json.Unmarshal(content, &interaction); err != nil {
-			return nil, fmt.Errorf("error decoding interaction: %w", err)
+		if err := json.Unmarshal(data, &interaction); err != nil {
+			// Log error but continue with other files
+			fmt.Printf("Warning: Could not parse JSON in file %s: %v\n", file.Name(), err)
+			continue
 		}
 
 		interactions = append(interactions, &interaction)
