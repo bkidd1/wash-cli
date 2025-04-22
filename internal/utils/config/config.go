@@ -18,7 +18,6 @@ const (
 // Config holds the application configuration
 type Config struct {
 	OpenAIKey     string
-	LogPath       string
 	ProjectGoal   string   `yaml:"project_goal,omitempty"`
 	RememberNotes []string `yaml:"remember_notes,omitempty"`
 }
@@ -41,7 +40,6 @@ func LoadConfig() (*Config, error) {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// Config file not found, create it with default values
 			viper.Set("openai_key", "")
-			viper.Set("log_path", filepath.Join(configDir, "logs"))
 			viper.Set("project_goal", "")
 			viper.Set("remember_notes", []string{})
 			if err := viper.SafeWriteConfig(); err != nil {
@@ -62,19 +60,12 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("OpenAI API key not found. Please set OPENAI_API_KEY environment variable or add it to ~/.wash/wash.yaml")
 	}
 
-	// Get log path from config file or use default
-	logPath := viper.GetString("log_path")
-	if logPath == "" {
-		logPath = filepath.Join(configDir, "logs")
-	}
-
 	// Get project goal and remember notes
 	projectGoal := viper.GetString("project_goal")
 	rememberNotes := viper.GetStringSlice("remember_notes")
 
 	return &Config{
 		OpenAIKey:     openAIKey,
-		LogPath:       logPath,
 		ProjectGoal:   projectGoal,
 		RememberNotes: rememberNotes,
 	}, nil
@@ -83,7 +74,6 @@ func LoadConfig() (*Config, error) {
 // SaveConfig saves the configuration to file
 func SaveConfig(config *Config) error {
 	viper.Set("openai_key", config.OpenAIKey)
-	viper.Set("log_path", config.LogPath)
 	viper.Set("project_goal", config.ProjectGoal)
 	viper.Set("remember_notes", config.RememberNotes)
 

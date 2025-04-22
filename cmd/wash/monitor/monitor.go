@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/bkidd1/wash-cli/internal/services/monitor/chatmonitor"
@@ -26,7 +27,9 @@ func Command() *cobra.Command {
 }
 
 func startCmd() *cobra.Command {
-	return &cobra.Command{
+	var projectName string
+
+	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start monitoring",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -35,7 +38,16 @@ func startCmd() *cobra.Command {
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
-			m, err := chatmonitor.NewMonitor(cfg)
+			// If project name not provided, use current directory name
+			if projectName == "" {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("failed to get current directory: %w", err)
+				}
+				projectName = filepath.Base(cwd)
+			}
+
+			m, err := chatmonitor.NewMonitor(cfg, projectName)
 			if err != nil {
 				return fmt.Errorf("failed to create monitor: %w", err)
 			}
@@ -56,6 +68,9 @@ func startCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&projectName, "project", "p", "", "Project name (defaults to current directory name)")
+	return cmd
 }
 
 func stopCmd() *cobra.Command {
@@ -68,7 +83,7 @@ func stopCmd() *cobra.Command {
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
-			m, err := chatmonitor.NewMonitor(cfg)
+			m, err := chatmonitor.NewMonitor(cfg, "")
 			if err != nil {
 				return fmt.Errorf("failed to create monitor: %w", err)
 			}

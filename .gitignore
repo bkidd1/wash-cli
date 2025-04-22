@@ -16,7 +16,7 @@ out/
 .env.*.local
 
 # Logs
-logs/
+# logs/
 *.log
 
 # Runtime data

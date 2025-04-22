@@ -54,11 +54,11 @@ DO NOT include any introductory text, summaries, conclusions or direct reference
 
 // TerminalAnalyzer represents a code analyzer that returns formatted terminal output
 type TerminalAnalyzer struct {
-	Client         *openai.Client
-	cfg            *config.Config
-	projectGoal    string
-	rememberNotes  []string
-	sessionManager *notes.SessionManager
+	Client        *openai.Client
+	cfg           *config.Config
+	projectGoal   string
+	rememberNotes []string
+	notesManager  *notes.NotesManager
 }
 
 // NewTerminalAnalyzer creates a new terminal analyzer
@@ -71,10 +71,10 @@ func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []stri
 		fmt.Printf("Warning: Could not create wash directory: %v\n", err)
 	}
 
-	sessionManager, err := notes.NewSessionManager(washDir)
+	notesManager, err := notes.NewNotesManager()
 	if err != nil {
-		fmt.Printf("Warning: Could not create session manager: %v\n", err)
-		sessionManager = nil
+		fmt.Printf("Warning: Could not create notes manager: %v\n", err)
+		notesManager = nil
 	}
 
 	return &TerminalAnalyzer{
@@ -82,9 +82,9 @@ func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []stri
 		cfg: &config.Config{
 			OpenAIKey: apiKey,
 		},
-		projectGoal:    projectGoal,
-		rememberNotes:  rememberNotes,
-		sessionManager: sessionManager,
+		projectGoal:   projectGoal,
+		rememberNotes: rememberNotes,
+		notesManager:  notesManager,
 	}
 }
 
@@ -111,49 +111,30 @@ func (a *TerminalAnalyzer) getContextualPrompt() string {
 		context.WriteString("\n")
 	}
 
-	// Add wash notes context from the most recent session (SECOND PRIORITY)
-	if session := a.sessionManager.GetCurrentSession(); session != nil {
-		fmt.Printf("Current Session ID: %s\n", session.ID)
-		fmt.Printf("Session Project Name: %s\n", session.ProjectName)
-		fmt.Printf("Session Project Goal: %s\n", session.ProjectGoal)
-
-		recentRecords := a.sessionManager.GetRecentRecords(session.ID, 5*time.Minute)
-		fmt.Printf("Number of Recent Records: %d\n", len(recentRecords))
-
-		if len(recentRecords) > 0 {
-			context.WriteString("RECENT WASH NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n")
-			for _, record := range recentRecords {
-				switch r := record.(type) {
-				case *notes.MonitorNote:
-					context.WriteString(fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Analysis.CurrentApproach))
-					if len(r.Analysis.Issues) > 0 {
-						context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(r.Analysis.Issues, ", ")))
-					}
-					if len(r.Analysis.Solutions) > 0 {
-						context.WriteString(fmt.Sprintf("  Solutions: %s\n", strings.Join(r.Analysis.Solutions, ", ")))
-					}
-				case *notes.FileNote:
-					context.WriteString(fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Analysis))
-					if len(r.Issues) > 0 {
-						context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(r.Issues, ", ")))
-					}
-				case *notes.ProjectNote:
-					context.WriteString(fmt.Sprintf("- %s: Project Analysis\n", r.Timestamp.Format("2006-01-02 15:04:05")))
-					if len(r.Structure.Issues) > 0 {
-						context.WriteString(fmt.Sprintf("  Structure Issues: %s\n", strings.Join(r.Structure.Issues, ", ")))
-					}
-				case *notes.BugNote:
-					context.WriteString(fmt.Sprintf("- %s: Bug Report\n", r.Timestamp.Format("2006-01-02 15:04:05")))
-					context.WriteString(fmt.Sprintf("  Description: %s\n", r.Description))
-					if r.Solution != "" {
-						context.WriteString(fmt.Sprintf("  Solution: %s\n", r.Solution))
+	// Add recent monitor notes if available
+	if a.notesManager != nil {
+		// Get the current working directory name as project name
+		cwd, err := os.Getwd()
+		if err == nil {
+			projectName := filepath.Base(cwd)
+			interactions, err := a.notesManager.LoadInteractions(projectName)
+			if err == nil && len(interactions) > 0 {
+				context.WriteString("RECENT WASH NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n")
+				cutoff := time.Now().Add(-5 * time.Minute)
+				for _, interaction := range interactions {
+					if interaction.Timestamp.After(cutoff) {
+						context.WriteString(fmt.Sprintf("- %s: %s\n", interaction.Timestamp.Format("2006-01-02 15:04:05"), interaction.Analysis.CurrentApproach))
+						if len(interaction.Analysis.Issues) > 0 {
+							context.WriteString(fmt.Sprintf("  Issues: %s\n", strings.Join(interaction.Analysis.Issues, ", ")))
+						}
+						if len(interaction.Analysis.Solutions) > 0 {
+							context.WriteString(fmt.Sprintf("  Solutions: %s\n", strings.Join(interaction.Analysis.Solutions, ", ")))
+						}
 					}
 				}
+				context.WriteString("\n")
 			}
-			context.WriteString("\n")
 		}
-	} else {
-		fmt.Println("No current session found")
 	}
 
 	// Add project goal (LOWEST PRIORITY)

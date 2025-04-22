@@ -14,65 +14,61 @@ import (
 )
 
 type Analyzer struct {
-	client         *openai.Client
-	sessionManager *notes.SessionManager
+	client       *openai.Client
+	notesManager *notes.NotesManager
 }
 
-func NewAnalyzer(client *openai.Client, sessionManager *notes.SessionManager) *Analyzer {
+func NewAnalyzer(client *openai.Client, notesManager *notes.NotesManager) *Analyzer {
 	return &Analyzer{
-		client:         client,
-		sessionManager: sessionManager,
+		client:       client,
+		notesManager: notesManager,
 	}
 }
 
 // formatContextForAI formats recent records into a context string for the AI
-func formatContextForAI(records []interface{}) string {
+func formatContextForAI(records []*notes.Interaction) string {
 	if len(records) == 0 {
 		return "No recent context available."
 	}
 
 	var context strings.Builder
-	context.WriteString("Recent context from the session:\n\n")
+	context.WriteString("Recent context:\n\n")
 
-	for _, record := range records {
-		switch r := record.(type) {
-		case *notes.Interaction:
-			context.WriteString(fmt.Sprintf("Interaction at %s:\n", r.Timestamp.Format("2006-01-02 15:04:05")))
-			context.WriteString(fmt.Sprintf("Context: %s\n", r.Context.CurrentState))
-			if len(r.Context.FilesChanged) > 0 {
-				context.WriteString(fmt.Sprintf("Files Changed: %s\n", strings.Join(r.Context.FilesChanged, ", ")))
-			}
-			context.WriteString(fmt.Sprintf("Analysis: %s\n", r.Analysis.CurrentApproach))
-			if len(r.Analysis.Issues) > 0 {
-				context.WriteString(fmt.Sprintf("Issues: %s\n", strings.Join(r.Analysis.Issues, ", ")))
-			}
-			if len(r.Analysis.Solutions) > 0 {
-				context.WriteString(fmt.Sprintf("Solutions: %s\n", strings.Join(r.Analysis.Solutions, ", ")))
-			}
-			context.WriteString("\n")
-		case *notes.CodeChange:
-			context.WriteString(fmt.Sprintf("Code Change at %s:\n", r.Timestamp.Format("2006-01-02 15:04:05")))
-			context.WriteString(fmt.Sprintf("File: %s\n", r.File))
-			context.WriteString(fmt.Sprintf("Description: %s\n", r.Description))
-			if len(r.PotentialIssues) > 0 {
-				context.WriteString(fmt.Sprintf("Potential Issues: %s\n", strings.Join(r.PotentialIssues, ", ")))
-			}
-			context.WriteString("\n")
+	for _, r := range records {
+		context.WriteString(fmt.Sprintf("Interaction at %s:\n", r.Timestamp.Format("2006-01-02 15:04:05")))
+		context.WriteString(fmt.Sprintf("Context: %s\n", r.Context.CurrentState))
+		if len(r.Context.FilesChanged) > 0 {
+			context.WriteString(fmt.Sprintf("Files Changed: %s\n", strings.Join(r.Context.FilesChanged, ", ")))
 		}
+		context.WriteString(fmt.Sprintf("Analysis: %s\n", r.Analysis.CurrentApproach))
+		if len(r.Analysis.Issues) > 0 {
+			context.WriteString(fmt.Sprintf("Issues: %s\n", strings.Join(r.Analysis.Issues, ", ")))
+		}
+		if len(r.Analysis.Solutions) > 0 {
+			context.WriteString(fmt.Sprintf("Solutions: %s\n", strings.Join(r.Analysis.Solutions, ", ")))
+		}
+		context.WriteString("\n")
 	}
 
 	return context.String()
 }
 
-func (a *Analyzer) AnalyzeWithContext(screenshotPath string) (*notes.Interaction, error) {
-	// Get current session
-	session := a.sessionManager.GetCurrentSession()
-	if session == nil {
-		return nil, fmt.Errorf("no active session")
+func (a *Analyzer) AnalyzeWithContext(screenshotPath string, projectName string, projectGoal string) (*notes.Interaction, error) {
+	// Get recent interactions from the last 5 minutes
+	recentInteractions, err := a.notesManager.LoadInteractions(projectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load recent interactions: %v", err)
 	}
 
-	// Get recent records from the last 5 minutes
-	recentRecords := a.sessionManager.GetRecentRecords(session.ID, 5*time.Minute)
+	// Filter to last 5 minutes
+	cutoff := time.Now().Add(-5 * time.Minute)
+	var recentRecords []*notes.Interaction
+	for _, interaction := range recentInteractions {
+		if interaction.Timestamp.After(cutoff) {
+			recentRecords = append(recentRecords, interaction)
+		}
+	}
+
 	contextStr := formatContextForAI(recentRecords)
 
 	// Read the screenshot
@@ -90,7 +86,7 @@ Your role is to analyze the chat interactions in the provided window screenshots
 1. Identify potential issues and improvements, and record better solutions. Especially issues that have been caused by human error/bias misguiding the AI via poor prompts/communication.
 2. Document best practices they use and the solutions to how they fix bugs.
 
-Recent context from the session:
+Recent context:
 %s
 
 Based on this context and the current screenshot, please analyze the interaction and provide:
@@ -152,8 +148,8 @@ Format your response as a JSON object with the following structure:
 	// Create and return the interaction
 	interaction := &notes.Interaction{
 		Timestamp:   time.Now(),
-		ProjectName: session.ProjectName,
-		ProjectGoal: session.ProjectGoal,
+		ProjectName: projectName,
+		ProjectGoal: projectGoal,
 		Context: struct {
 			CurrentState string   `json:"current_state"`
 			FilesChanged []string `json:"files_changed,omitempty"`
@@ -173,9 +169,9 @@ Format your response as a JSON object with the following structure:
 		},
 	}
 
-	// Add the interaction to the session
-	if err := a.sessionManager.AddRecord(interaction); err != nil {
-		return nil, fmt.Errorf("failed to add interaction to session: %v", err)
+	// Save the interaction
+	if err := a.notesManager.SaveInteraction(interaction); err != nil {
+		return nil, fmt.Errorf("failed to save interaction: %v", err)
 	}
 
 	return interaction, nil
