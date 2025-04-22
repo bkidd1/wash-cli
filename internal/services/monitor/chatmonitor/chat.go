@@ -3,6 +3,7 @@ package chatmonitor
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -19,62 +20,52 @@ import (
 )
 
 type Monitor struct {
-	client         *openai.Client
-	cfg            *config.Config
-	running        bool
-	stopChan       chan struct{}
-	doneChan       chan struct{}
-	notesDir       string
-	startTime      time.Time
-	pidManager     *pid.PIDManager
-	pidFile        string
-	sessionManager *notes.SessionManager
+	client      *openai.Client
+	cfg         *config.Config
+	running     bool
+	stopChan    chan struct{}
+	doneChan    chan struct{}
+	notesDir    string
+	startTime   time.Time
+	pidManager  *pid.PIDManager
+	pidFile     string
+	projectName string
 }
 
-func NewMonitor(cfg *config.Config) (*Monitor, error) {
+func NewMonitor(cfg *config.Config, projectName string) (*Monitor, error) {
 	fmt.Println("Creating new monitor...")
 	client := openai.NewClient(cfg.OpenAIKey)
 
-	// Get the current working directory to create project-specific path
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current directory: %v", err)
+	// If project name not provided, use current directory name
+	if projectName == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current directory: %v", err)
+		}
+		projectName = filepath.Base(cwd)
 	}
 
 	// Create project-specific notes directory in ~/.wash/projects/
-	projectPath := filepath.Base(cwd)
-	notesDir := filepath.Join(os.Getenv("HOME"), ".wash", "projects", projectPath, "notes")
+	notesDir := filepath.Join(os.Getenv("HOME"), ".wash", "projects", projectName, "notes")
 	if err := os.MkdirAll(notesDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create notes directory: %v", err)
 	}
 
-	// Create .gitignore in notes directory to prevent accidental commits
-	gitignorePath := filepath.Join(notesDir, ".gitignore")
-	if err := os.WriteFile(gitignorePath, []byte("*\n"), 0644); err != nil {
-		return nil, fmt.Errorf("failed to create .gitignore: %v", err)
-	}
-
-	// Set up PID file path (keep this in .wash for system files)
+	// Create PID manager
 	pidFile := filepath.Join(os.Getenv("HOME"), ".wash", "chat_monitor.pid")
 	pidManager := pid.NewPIDManager(pidFile)
 
-	// Initialize session manager
-	sessionManager, err := notes.NewSessionManager(notesDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create session manager: %v", err)
-	}
-
 	return &Monitor{
-		client:         client,
-		cfg:            cfg,
-		running:        false,
-		stopChan:       make(chan struct{}),
-		doneChan:       make(chan struct{}),
-		notesDir:       notesDir,
-		startTime:      time.Now(),
-		pidManager:     pidManager,
-		pidFile:        pidFile,
-		sessionManager: sessionManager,
+		client:      client,
+		cfg:         cfg,
+		running:     false,
+		stopChan:    make(chan struct{}),
+		doneChan:    make(chan struct{}),
+		notesDir:    notesDir,
+		startTime:   time.Now(),
+		pidManager:  pidManager,
+		pidFile:     pidFile,
+		projectName: projectName,
 	}, nil
 }
 
@@ -83,57 +74,28 @@ func (m *Monitor) Start() error {
 		return fmt.Errorf("monitor is already running")
 	}
 
-	// Check if another instance is running using PID manager
-	if pid, err := m.pidManager.CheckRunning(); err == nil && pid > 0 {
-		return fmt.Errorf("monitor is already running (PID: %d)", pid)
-	}
-
-	// Start a new session
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current directory: %v", err)
-	}
-	projectName := filepath.Base(cwd)
-
-	// Start a new session for monitoring
-	_, err = m.sessionManager.StartSession(projectName, "Monitor chat interactions and analyze development patterns")
-	if err != nil {
-		return fmt.Errorf("failed to start monitoring session: %v", err)
-	}
-
-	// Write PID file using PID manager
+	// Write PID file
 	if err := m.pidManager.WritePID(); err != nil {
 		return fmt.Errorf("failed to write PID file: %v", err)
 	}
 
-	// Set up signal handling for cleanup
+	m.running = true
+	go m.monitorLoop()
+
+	// Handle signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		m.cleanup()
-		os.Exit(0)
+		m.Stop()
 	}()
 
-	m.running = true
-	go m.monitorLoop()
-	fmt.Println("Monitor started successfully!")
-
-	// Wait for the monitor loop to complete
-	<-m.doneChan
 	return nil
 }
 
 func (m *Monitor) cleanup() {
-	if m.running {
-		m.running = false
-		close(m.stopChan)
-		close(m.doneChan)
-	}
-
-	// Clean up PID file using PID manager
 	if err := m.pidManager.Cleanup(); err != nil {
-		fmt.Printf("Warning: failed to cleanup PID file: %v\n", err)
+		fmt.Printf("Warning: Failed to cleanup PID file: %v\n", err)
 	}
 }
 
@@ -142,215 +104,110 @@ func (m *Monitor) Stop() error {
 		return fmt.Errorf("monitor is not running")
 	}
 
-	// Check if process is running using PID manager
-	pid, err := m.pidManager.CheckRunning()
-	if err != nil || pid == 0 {
-		return fmt.Errorf("monitor is not running")
-	}
+	close(m.stopChan)
+	<-m.doneChan
+	m.running = false
 
-	fmt.Printf("Stopping monitor (PID: %d)...\n", pid)
-
-	// Get the process
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return fmt.Errorf("failed to find process: %v", err)
-	}
-
-	// Send interrupt signal
-	if err := process.Signal(os.Interrupt); err != nil {
-		// If interrupt fails, try terminating
-		if err := process.Signal(syscall.SIGTERM); err != nil {
-			return fmt.Errorf("failed to stop process: %v", err)
-		}
-	}
-
-	// Wait a moment for the process to clean up
-	time.Sleep(100 * time.Millisecond)
-
-	// Clean up PID file using PID manager
-	if err := m.pidManager.Cleanup(); err != nil {
-		fmt.Printf("Warning: failed to cleanup PID file: %v\n", err)
-	}
-
-	fmt.Println("Monitor stopped successfully")
+	m.cleanup()
 	return nil
 }
 
 func (m *Monitor) monitorLoop() {
-	ticker := time.NewTicker(30 * time.Second)
+	defer close(m.doneChan)
+
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
-			fmt.Println("Monitoring...")
-			if err := m.analyzeScreenshot(); err != nil {
-				fmt.Printf("Error analyzing screenshot: %v\n", err)
-			}
 		case <-m.stopChan:
-			m.running = false
-			close(m.doneChan)
 			return
+		case <-ticker.C:
+			if err := m.analyzeScreenshot(); err != nil {
+				fmt.Printf("Warning: Failed to analyze screenshot: %v\n", err)
+			}
 		}
 	}
 }
 
 func (m *Monitor) analyzeScreenshot() error {
-	// Take a screenshot
-	screenshotPath := filepath.Join(m.notesDir, "latest_screenshot.png")
-	if err := screenshot.CaptureWindow("Cursor", screenshotPath); err != nil {
+	// Take screenshot
+	screenshotData, err := screenshot.Capture(0) // Capture primary display
+	if err != nil {
 		return fmt.Errorf("failed to capture screenshot: %v", err)
 	}
 
-	// Read the screenshot file
-	imageData, err := os.ReadFile(screenshotPath)
+	// Read screenshot file
+	data, err := os.ReadFile(screenshotData.Path)
 	if err != nil {
-		return fmt.Errorf("failed to read screenshot: %v", err)
+		return fmt.Errorf("failed to read screenshot file: %v", err)
 	}
 
-	// Convert to base64
-	base64Image := base64.StdEncoding.EncodeToString(imageData)
+	// Convert screenshot to base64
+	screenshotBase64 := base64.StdEncoding.EncodeToString(data)
 
-	// Create the request with the correct model and message format
-	req := openai.ChatCompletionRequest{
-		Model: "gpt-4.1-mini",
-		Messages: []openai.ChatCompletionMessage{
-			{
-				Role: openai.ChatMessageRoleSystem,
-				Content: `You are an expert software architect and intermediary between a human developer and their AI coding agent. 
-Your role is to analyze the chat interactions in the provided window screenshots and do two things:
-1. Identify potential issues and improvements, and record better solutions. Especially issues that have been caused by human error/bias misguiding the AI via poor prompts/communication.
-2. Document best practices they use and the solutions to how they fix bugs.
-
-Your observations will be recorded in the wash notes directory. 
-Your observations will serve as context for AI coding agents to solve future issues/make better decisions in the current project.
-Here is the format you should use to record your observations:
-
-## Current Approach
-[1-2 sentences describing what the user is trying to achieve and their current method]
-
-## Issues
-- [Potential issue or problem identified]
-- [Human error/bias in communication]
-- [Misunderstanding or miscommunication]
-
-## Solutions
-- [Better approach or solution]
-- [Implementation step]
-- [Improvement to communication or prompt]
-
-## Best Practices
-- [Effective pattern or practice observed]
-- [Successful bug fix or problem-solving approach]
-- [Particularly effective communication strategy]
-
-For each section, provide multiple bullet points where relevant. Each bullet point should be a complete, standalone statement that can be parsed into the JSON structure.`,
-			},
-			{
-				Role: openai.ChatMessageRoleUser,
-				MultiContent: []openai.ChatMessagePart{
-					{
-						Type: "text",
-						Text: "Please analyze this chat interaction and provide insights.",
-					},
-					{
-						Type: "image_url",
-						ImageURL: &openai.ChatMessageImageURL{
-							URL: fmt.Sprintf("data:image/png;base64,%s", base64Image),
-						},
-					},
+	// Analyze screenshot with OpenAI
+	resp, err := m.client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4VisionPreview,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role: openai.ChatMessageRoleSystem,
+					Content: "You are a development assistant analyzing a screenshot of a developer's screen. " +
+						"Focus on identifying the current development activity, potential issues, and best practices.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: fmt.Sprintf("Analyze this screenshot of a developer's screen and provide insights about the current development activity.\n\n![Screenshot](data:image/png;base64,%s)", screenshotBase64),
 				},
 			},
 		},
-	}
-
-	// Get the analysis
-	resp, err := m.client.CreateChatCompletion(context.Background(), req)
+	)
 	if err != nil {
-		return fmt.Errorf("failed to get analysis: %v", err)
+		return fmt.Errorf("failed to analyze screenshot: %v", err)
 	}
 
-	// Delete the screenshot after we have the analysis
-	if err := os.Remove(screenshotPath); err != nil {
-		return fmt.Errorf("failed to delete screenshot: %v", err)
-	}
-
-	// Parse the analysis into sections
-	analysis := resp.Choices[0].Message.Content
-	currentApproach := ""
-	issues := []string{}
-	solutions := []string{}
-	bestPractices := []string{}
-
-	// Simple parsing of the analysis text
-	lines := strings.Split(analysis, "\n")
-	currentSection := ""
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		switch {
-		case strings.HasPrefix(line, "## Current Approach"):
-			currentSection = "approach"
-		case strings.HasPrefix(line, "## Issues"):
-			currentSection = "issues"
-		case strings.HasPrefix(line, "## Solutions"):
-			currentSection = "solutions"
-		case strings.HasPrefix(line, "## Best Practices"):
-			currentSection = "practices"
-		case strings.HasPrefix(line, "- "):
-			content := strings.TrimPrefix(line, "- ")
-			switch currentSection {
-			case "approach":
-				currentApproach += content + " "
-			case "issues":
-				issues = append(issues, content)
-			case "solutions":
-				solutions = append(solutions, content)
-			case "practices":
-				bestPractices = append(bestPractices, content)
-			}
-		}
-	}
-
-	// Create and save an interaction
+	// Create monitor note
 	interaction := &notes.MonitorNote{
 		Timestamp:   time.Now(),
-		ProjectName: filepath.Base(m.notesDir),
-		ProjectGoal: "Monitor chat interactions and analyze development patterns",
-		Context: struct {
-			CurrentState string   `json:"current_state"`
-			FilesChanged []string `json:"files_changed,omitempty"`
-		}{
-			CurrentState: "Monitoring chat interactions",
-		},
-		Analysis: struct {
-			CurrentApproach string   `json:"current_approach"`
-			Issues          []string `json:"issues,omitempty"`
-			Solutions       []string `json:"solutions,omitempty"`
-			BestPractices   []string `json:"best_practices,omitempty"`
-		}{
-			CurrentApproach: strings.TrimSpace(currentApproach),
-			Issues:          issues,
-			Solutions:       solutions,
-			BestPractices:   bestPractices,
-		},
-		Metadata: struct {
-			Tags     []string       `json:"tags,omitempty"`
-			Priority notes.Priority `json:"priority,omitempty"`
-			Status   notes.Status   `json:"status,omitempty"`
-		}{
-			Tags:     []string{"monitor", "analysis"},
-			Priority: notes.PriorityMedium,
-			Status:   notes.StatusOpen,
-		},
+		ProjectName: m.projectName,
+		ProjectGoal: m.cfg.ProjectGoal,
 	}
 
-	// Save the interaction using the session manager
-	if err := m.sessionManager.AddRecord(interaction); err != nil {
-		return fmt.Errorf("failed to save interaction: %v", err)
+	// Parse response and update note
+	response := resp.Choices[0].Message.Content
+	lines := strings.Split(response, "\n")
+	for i, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "Current State:"):
+			interaction.Context.CurrentState = strings.TrimSpace(strings.TrimPrefix(line, "Current State:"))
+		case strings.HasPrefix(line, "Current Approach:"):
+			interaction.Analysis.CurrentApproach = strings.TrimSpace(strings.TrimPrefix(line, "Current Approach:"))
+		case strings.HasPrefix(line, "Issues:"):
+			interaction.Analysis.Issues = append(interaction.Analysis.Issues, strings.TrimSpace(strings.TrimPrefix(line, "Issues:")))
+		case strings.HasPrefix(line, "Solutions:"):
+			interaction.Analysis.Solutions = append(interaction.Analysis.Solutions, strings.TrimSpace(strings.TrimPrefix(line, "Solutions:")))
+		case strings.HasPrefix(line, "Best Practices:"):
+			interaction.Analysis.BestPractices = append(interaction.Analysis.BestPractices, strings.TrimSpace(strings.TrimPrefix(line, "Best Practices:")))
+		case i > 0 && strings.HasPrefix(lines[i-1], "Issues:"):
+			interaction.Analysis.Issues = append(interaction.Analysis.Issues, strings.TrimSpace(line))
+		case i > 0 && strings.HasPrefix(lines[i-1], "Solutions:"):
+			interaction.Analysis.Solutions = append(interaction.Analysis.Solutions, strings.TrimSpace(line))
+		case i > 0 && strings.HasPrefix(lines[i-1], "Best Practices:"):
+			interaction.Analysis.BestPractices = append(interaction.Analysis.BestPractices, strings.TrimSpace(line))
+		}
+	}
+
+	// Save note to file
+	noteFile := filepath.Join(m.notesDir, fmt.Sprintf("monitor_%s.json", time.Now().Format("2006-01-02-15-04-05")))
+	noteData, err := json.MarshalIndent(interaction, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal monitor note: %v", err)
+	}
+
+	if err := os.WriteFile(noteFile, noteData, 0644); err != nil {
+		return fmt.Errorf("failed to save monitor note: %v", err)
 	}
 
 	return nil

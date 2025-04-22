@@ -1,92 +1,106 @@
 package bug
 
 import (
-	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 
-	"github.com/bkidd1/wash-cli/internal/services/analyzer"
-	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/spf13/cobra"
 )
 
-// Command creates the bug command
-func Command() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "bug",
-		Short: "Analyze and fix bugs in code",
-		Long:  `Analyzes code for potential bugs and suggests fixes.`,
-	}
+var (
+	description      string
+	stepsToReproduce []string
+	expectedBehavior string
+	actualBehavior   string
+	priority         string
+)
 
-	cmd.AddCommand(analyzeCommand())
-	cmd.AddCommand(fixCommand())
+var Command = &cobra.Command{
+	Use:   "bug",
+	Short: "Report a bug in your code",
+	Long:  `Report a bug in your code with detailed information about the issue.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// Get current working directory for project context
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %v", err)
+		}
 
-	return cmd
+		// Create project-specific bug directory
+		projectPath := filepath.Base(cwd)
+		bugDir := filepath.Join(os.Getenv("HOME"), ".wash", "projects", projectPath, "bugs")
+		if err := os.MkdirAll(bugDir, 0755); err != nil {
+			return fmt.Errorf("failed to create bugs directory: %v", err)
+		}
+
+		// Generate bug report filename with timestamp
+		timestamp := time.Now().Format("2006-01-02-15-04-05")
+		bugFile := filepath.Join(bugDir, fmt.Sprintf("bug_%s.md", timestamp))
+
+		// Create bug report
+		report := fmt.Sprintf(`# Bug Report
+*Reported on %s*
+
+## Description
+%s
+
+## Steps to Reproduce
+%s
+
+## Expected Behavior
+%s
+
+## Actual Behavior
+%s
+
+## Priority
+%s
+
+## Status
+Open
+
+## Notes
+`,
+			time.Now().Format("2006-01-02 15:04:05"),
+			description,
+			formatSteps(stepsToReproduce),
+			expectedBehavior,
+			actualBehavior,
+			priority,
+		)
+
+		// Save bug report
+		if err := os.WriteFile(bugFile, []byte(report), 0644); err != nil {
+			return fmt.Errorf("failed to save bug report: %v", err)
+		}
+
+		fmt.Printf("Bug report saved to %s\n", bugFile)
+		return nil
+	},
 }
 
-// analyzeCommand creates the analyze subcommand
-func analyzeCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "analyze [file]",
-		Short: "Analyze a file for potential bugs",
-		Long: `Analyzes a file for potential bugs and suggests improvements.
-The analysis focuses on common programming errors, edge cases, and best practices.`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Load config
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
-
-			// Create analyzer with project context
-			analyzer := analyzer.NewTerminalAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
-
-			// Analyze file
-			result, err := analyzer.AnalyzeFile(context.Background(), args[0])
-			if err != nil {
-				return fmt.Errorf("failed to analyze file: %w", err)
-			}
-
-			// Print results
-			fmt.Println(result)
-			return nil
-		},
+func formatSteps(steps []string) string {
+	if len(steps) == 0 {
+		return "No steps provided"
 	}
+	var result string
+	for i, step := range steps {
+		result += fmt.Sprintf("%d. %s\n", i+1, step)
+	}
+	return result
 }
 
-// fixCommand creates the fix subcommand
-func fixCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "fix [file] [error]",
-		Short: "Fix a specific error in a file",
-		Long: `Fixes a specific error in a file by analyzing the error message
-and suggesting a solution.`,
-		Args: cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Load config
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
+func init() {
+	Command.Flags().StringVarP(&description, "description", "d", "", "Description of the bug")
+	Command.Flags().StringSliceVarP(&stepsToReproduce, "steps", "s", []string{}, "Steps to reproduce the bug")
+	Command.Flags().StringVarP(&expectedBehavior, "expected", "e", "", "Expected behavior")
+	Command.Flags().StringVarP(&actualBehavior, "actual", "a", "", "Actual behavior")
+	Command.Flags().StringVarP(&priority, "priority", "p", "medium", "Priority level (low, medium, high)")
 
-			// Read file content
-			content, err := os.ReadFile(args[0])
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-
-			// Create analyzer with project context
-			analyzer := analyzer.NewTerminalAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
-			// Get error fix
-			result, err := analyzer.GetErrorFix(context.Background(), string(content), args[1])
-			if err != nil {
-				return fmt.Errorf("failed to get error fix: %w", err)
-			}
-
-			// Print results
-			fmt.Println(result)
-			return nil
-		},
-	}
+	// Mark required flags
+	Command.MarkFlagRequired("description")
+	Command.MarkFlagRequired("expected")
+	Command.MarkFlagRequired("actual")
 }

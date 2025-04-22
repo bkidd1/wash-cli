@@ -55,10 +55,8 @@ func Command() *cobra.Command {
 
 			// Create new note
 			note := &notes.RememberNote{
-				BaseRecord: notes.BaseRecord{
-					Timestamp: time.Now(),
-				},
-				Content: content,
+				Timestamp: time.Now(),
+				Content:   content,
 				Metadata: map[string]interface{}{
 					"project": projectName,
 					"type":    "remember",

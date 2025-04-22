@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bkidd1/wash-cli/cmd/wash/bug"
 	"github.com/bkidd1/wash-cli/cmd/wash/file"
 	"github.com/bkidd1/wash-cli/cmd/wash/monitor"
 	"github.com/bkidd1/wash-cli/cmd/wash/project"
@@ -23,7 +22,6 @@ func initCommands() error {
 	// Add commands
 	rootCmd.AddCommand(project.Command())
 	rootCmd.AddCommand(file.Command())
-	rootCmd.AddCommand(bug.Command())
 	rootCmd.AddCommand(monitor.Command())
 	rootCmd.AddCommand(remember.Command())
 	rootCmd.AddCommand(summary.Command())
