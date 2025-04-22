@@ -3,6 +3,7 @@ package bug
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/bkidd1/wash-cli/internal/services/analyzer"
 	"github.com/bkidd1/wash-cli/internal/utils/config"
@@ -69,11 +70,16 @@ and suggesting a solution.`,
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
+			// Read file content
+			content, err := os.ReadFile(args[0])
+			if err != nil {
+				return fmt.Errorf("failed to read file: %w", err)
+			}
+
 			// Create analyzer with project context
 			analyzer := analyzer.NewTerminalAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
-
 			// Get error fix
-			result, err := analyzer.GetErrorFix(context.Background(), args[0], args[1])
+			result, err := analyzer.GetErrorFix(context.Background(), string(content), args[1])
 			if err != nil {
 				return fmt.Errorf("failed to get error fix: %w", err)
 			}
