@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bkidd1/wash-cli/internal/services/notes"
 	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/sashabaranov/go-openai"
 )
 
 const (
-	systemPrompt = `You are an expert software architect and intermediary between a human developer and their AI coding agent. Your role is to analyze their code and interactions to identify potential issues and improvements. Especially issues that may have been caused by human error/bias misguiding the AI via poor prompts/communication. Focus on three priority levels:
+	terminalSystemPrompt = `You are an expert software architect and intermediary between a human developer and their AI coding agent. Your role is to analyze their code and interactions to identify potential issues and improvements. Especially issues that may have been caused by human error/bias misguiding the AI via poor prompts/communication. Focus on three priority levels:
 
 1. Critical! Must Fix
    Security vulnerabilities
@@ -44,44 +45,79 @@ It may also be the case that the code is currently optimal and changing things w
 DO NOT include any introductory text, summaries, or conclusions. Start directly with the priority levels and their issues.`
 )
 
-// Analyzer represents a code analyzer
-type Analyzer struct {
-	Client        *openai.Client
-	cfg           *config.Config
-	projectGoal   string
-	rememberNotes []string
+// TerminalAnalyzer represents a code analyzer that returns formatted terminal output
+type TerminalAnalyzer struct {
+	Client         *openai.Client
+	cfg            *config.Config
+	projectGoal    string
+	rememberNotes  []string
+	sessionManager *notes.SessionManager
 }
 
-// NewAnalyzer creates a new code analyzer
-func NewAnalyzer(apiKey string, projectGoal string, rememberNotes []string) *Analyzer {
+// NewTerminalAnalyzer creates a new terminal analyzer
+func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []string) *TerminalAnalyzer {
 	client := openai.NewClient(apiKey)
-	return &Analyzer{
+	// Get current working directory name as project name
+	wd, err := os.Getwd()
+	if err != nil {
+		wd = "default"
+	}
+	projectName := filepath.Base(wd)
+	sessionManager, _ := notes.NewSessionManager(projectName)
+	return &TerminalAnalyzer{
 		Client: client,
 		cfg: &config.Config{
 			OpenAIKey: apiKey,
 		},
-		projectGoal:   projectGoal,
-		rememberNotes: rememberNotes,
+		projectGoal:    projectGoal,
+		rememberNotes:  rememberNotes,
+		sessionManager: sessionManager,
 	}
 }
 
 // UpdateProjectContext updates the project goal and remember notes
-func (a *Analyzer) UpdateProjectContext(projectGoal string, rememberNotes []string) {
+func (a *TerminalAnalyzer) UpdateProjectContext(projectGoal string, rememberNotes []string) {
 	a.projectGoal = projectGoal
 	a.rememberNotes = rememberNotes
 }
 
 // getContextualPrompt returns the system prompt with project context
-func (a *Analyzer) getContextualPrompt() string {
+func (a *TerminalAnalyzer) getContextualPrompt() string {
 	context := fmt.Sprintf("The user's end-goal is %s", a.projectGoal)
 	if len(a.rememberNotes) > 0 {
 		context += fmt.Sprintf(", and they want to remind you that:\n%s", strings.Join(a.rememberNotes, "\n"))
 	}
-	return fmt.Sprintf("%s\n\n%s", context, systemPrompt)
+
+	// Add wash notes context from the most recent session
+	if session := a.sessionManager.GetCurrentSession(); session != nil {
+		recentRecords := a.sessionManager.GetRecentRecords(session.ID, 5*time.Minute)
+		if len(recentRecords) > 0 {
+			context += "\n\nRecent wash notes context:\n"
+			for _, record := range recentRecords {
+				switch r := record.(type) {
+				case *notes.Interaction:
+					context += fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Analysis.CurrentApproach)
+					if len(r.Analysis.Issues) > 0 {
+						context += fmt.Sprintf("  Issues: %s\n", strings.Join(r.Analysis.Issues, ", "))
+					}
+					if len(r.Analysis.Solutions) > 0 {
+						context += fmt.Sprintf("  Solutions: %s\n", strings.Join(r.Analysis.Solutions, ", "))
+					}
+				case *notes.CodeChange:
+					context += fmt.Sprintf("- %s: %s\n", r.Timestamp.Format("2006-01-02 15:04:05"), r.Description)
+					if len(r.PotentialIssues) > 0 {
+						context += fmt.Sprintf("  Potential Issues: %s\n", strings.Join(r.PotentialIssues, ", "))
+					}
+				}
+			}
+		}
+	}
+
+	return fmt.Sprintf("%s\n\n%s", context, terminalSystemPrompt)
 }
 
-// AnalyzeFile analyzes a single file for potential optimizations and improvements
-func (a *Analyzer) AnalyzeFile(ctx context.Context, filePath string) (string, error) {
+// AnalyzeFile analyzes a single file and returns formatted terminal output
+func (a *TerminalAnalyzer) AnalyzeFile(ctx context.Context, filePath string) (string, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("error reading file: %w", err)
@@ -116,8 +152,8 @@ func (a *Analyzer) AnalyzeFile(ctx context.Context, filePath string) (string, er
 	return analysis, nil
 }
 
-// AnalyzeProjectStructure analyzes the project structure and suggests improvements
-func (a *Analyzer) AnalyzeProjectStructure(ctx context.Context, dirPath string) (string, error) {
+// AnalyzeProjectStructure analyzes the project structure and returns formatted terminal output
+func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, dirPath string) (string, error) {
 	var fileList strings.Builder
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -168,8 +204,8 @@ func (a *Analyzer) AnalyzeProjectStructure(ctx context.Context, dirPath string) 
 	return analysis, nil
 }
 
-// AnalyzeChat analyzes chat history and provides insights
-func (a *Analyzer) AnalyzeChat(ctx context.Context, chatHistory string) (string, error) {
+// AnalyzeChat analyzes chat history and returns formatted terminal output
+func (a *TerminalAnalyzer) AnalyzeChat(ctx context.Context, chatHistory string) (string, error) {
 	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
@@ -199,39 +235,8 @@ func (a *Analyzer) AnalyzeChat(ctx context.Context, chatHistory string) (string,
 	return analysis, nil
 }
 
-// AnalyzeChatSummary analyzes chat history summaries and provides insights
-func (a *Analyzer) AnalyzeChatSummary(ctx context.Context, summary string) (string, error) {
-	resp, err := a.Client.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: openai.GPT4,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleSystem,
-					Content: a.getContextualPrompt() + "\n\nFocus on the overall interaction patterns and long-term improvements.",
-				},
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: summary,
-				},
-			},
-		},
-	)
-	if err != nil {
-		return "", fmt.Errorf("error getting analysis: %w", err)
-	}
-
-	// Format the response with priority levels
-	analysis := fmt.Sprintf(`# Summary Analysis
-*Generated on %s*
-
-%s`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
-
-	return analysis, nil
-}
-
-// GetErrorFix analyzes chat history for specific error patterns and provides solutions
-func (a *Analyzer) GetErrorFix(ctx context.Context, chatHistory string, errorType string) (string, error) {
+// GetErrorFix analyzes chat history for specific error patterns and returns formatted terminal output
+func (a *TerminalAnalyzer) GetErrorFix(ctx context.Context, chatHistory string, errorType string) (string, error) {
 	resp, err := a.Client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{

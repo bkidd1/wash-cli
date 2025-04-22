@@ -20,7 +20,7 @@ func loadingAnimation(done chan bool) {
 			fmt.Printf("\r") // Clear the line
 			return
 		default:
-			fmt.Printf("\rAnalyzing file... %s", spinner[i])
+			fmt.Printf("\rWashing file... %s", spinner[i])
 			i = (i + 1) % len(spinner)
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -44,7 +44,7 @@ and maintainability.`,
 			}
 
 			// Create analyzer with project context
-			analyzer := analyzer.NewAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
+			analyzer := analyzer.NewTerminalAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
 
 			// Create a channel to signal when analysis is done
 			done := make(chan bool)
