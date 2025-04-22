@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkidd1/wash-cli/internal/analyzer"
-	"github.com/bkidd1/wash-cli/internal/tracker"
-	"github.com/bkidd1/wash-cli/pkg/config"
+	"github.com/bkidd1/wash-cli/internal/core/tracker"
+	"github.com/bkidd1/wash-cli/internal/services/analyzer"
+	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"
 )

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkidd1/wash-cli/internal/notes"
+	"github.com/bkidd1/wash-cli/internal/services/notes"
 	"github.com/sashabaranov/go-openai"
 )
 
