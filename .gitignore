@@ -70,6 +70,7 @@ cmd/wash/wash
 cmd/wash/wash.exe
 cmd/wash/wash.test
 cmd/wash/wash.out
+cmd/wash/*.o
 
 # Generated files
 *.vsix

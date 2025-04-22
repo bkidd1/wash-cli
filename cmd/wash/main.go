@@ -16,20 +16,30 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "wash",
 	Short: "Wash CLI - A development assistant",
-	Long:  `Wash CLI is a development assistant that helps track errors, decisions, and project state.`,
+	Long:  `Wash Your Code!`,
 }
 
 func initCommands() error {
 	// Add commands
+	rootCmd.AddCommand(project.Command())
+	rootCmd.AddCommand(file.Command())
 	rootCmd.AddCommand(bug.Command())
 	rootCmd.AddCommand(monitor.Command())
-	rootCmd.AddCommand(file.Command())
-	rootCmd.AddCommand(project.Command())
 	rootCmd.AddCommand(remember.Command())
 	rootCmd.AddCommand(summary.Command())
 
 	// Hide the default completion command as we don't need it
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
+
+	// Hide the flags section
+	rootCmd.SetHelpTemplate(`{{.Long}}
+
+Call any of the following commands with "wash [command]"
+{{range .Commands}}{{if .IsAvailableCommand}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}
+
+Use "{{.CommandPath}} [command] --help" for more information about a command.
+`)
 
 	return nil
 }
