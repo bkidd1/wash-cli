@@ -33,11 +33,6 @@ func startCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start monitoring",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
-
 			// If project name not provided, use current directory name
 			if projectName == "" {
 				cwd, err := os.Getwd()
@@ -47,6 +42,13 @@ func startCmd() *cobra.Command {
 				projectName = filepath.Base(cwd)
 			}
 
+			// Load configuration
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Create monitor
 			m, err := chatmonitor.NewMonitor(cfg, projectName)
 			if err != nil {
 				return fmt.Errorf("failed to create monitor: %w", err)
@@ -61,11 +63,20 @@ func startCmd() *cobra.Command {
 				m.Stop()
 			}()
 
+			// Start monitoring
 			if err := m.Start(); err != nil {
 				return fmt.Errorf("failed to start monitor: %w", err)
 			}
 
-			return nil
+			fmt.Printf("Monitoring started for project: %s\n", projectName)
+			fmt.Println("Press Ctrl+C to stop monitoring...")
+
+			// Wait for monitor to complete
+			select {
+			case <-sigChan:
+				m.Stop()
+				return nil
+			}
 		},
 	}
 
@@ -78,11 +89,13 @@ func stopCmd() *cobra.Command {
 		Use:   "stop",
 		Short: "Stop monitoring",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load configuration
 			cfg, err := config.LoadConfig()
 			if err != nil {
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
+			// Create monitor
 			m, err := chatmonitor.NewMonitor(cfg, "")
 			if err != nil {
 				return fmt.Errorf("failed to create monitor: %w", err)
@@ -92,6 +105,7 @@ func stopCmd() *cobra.Command {
 				return fmt.Errorf("failed to stop monitor: %w", err)
 			}
 
+			fmt.Println("Monitoring stopped")
 			return nil
 		},
 	}
