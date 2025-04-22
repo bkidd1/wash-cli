@@ -223,7 +223,7 @@ func (m *Monitor) analyzeScreenshot() error {
 	contextStr := formatContextForAI(recentRecords)
 
 	// Create the analysis prompt with context
-	prompt := fmt.Sprintf(`You are observing a conversation between a user and an AI coding assistant.
+	prompt := `You are observing a conversation between a user and an AI coding assistant.
 Your task is to simply describe what is happening in this interaction.
 
 Based on the screenshot, please describe:
@@ -234,7 +234,7 @@ Format your response as a JSON object with the following structure:
 {
     "user_request": "brief description of what the user is asking",
     "ai_action": "brief description of what the AI is doing"
-}`, contextStr)
+}` + "\n\n" + contextStr
 
 	// Create the chat completion request
 	resp, err := m.client.CreateChatCompletion(
