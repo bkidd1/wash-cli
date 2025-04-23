@@ -1,31 +1,30 @@
 # Wash CLI
 
-Wash is a powerful command-line tool designed to help developers analyze, optimize, and monitor their code. It provides a suite of tools for code analysis, file monitoring, screenshot capture, and note-taking.
+Wash CLI is an AI-powered development assistant that helps you:
+- Monitor your development workflow
+- Track project progress
+- Remember important details
+- Analyze code and suggest improvements
+- Generate summaries and documentation
+- Debug and fix issues
 
 ## Installation
 
-### Using Homebrew (macOS)
+### Using Go Install (Recommended)
 
 ```bash
-brew tap bkidd1/tap
-brew install wash
+go install github.com/bkidd1/wash-cli/cmd/wash@latest
 ```
 
-### Using Binary Releases
+This will install the `wash` binary to your `$GOPATH/bin` directory. Make sure `$GOPATH/bin` is in your PATH.
 
-1. Download the appropriate binary for your platform from the [Releases](https://github.com/bkidd1/wash-cli/releases) page.
+### Using Homebrew (macOS/Linux)
 
-2. Make the binary executable:
-   ```bash
-   chmod +x wash
-   ```
+```bash
+brew install bkidd1/tap/wash-cli
+```
 
-3. Move the binary to a directory in your PATH:
-   ```bash
-   sudo mv wash /usr/local/bin/
-   ```
-
-### Building from Source
+### Manual Installation
 
 1. Clone the repository:
    ```bash
@@ -35,24 +34,38 @@ brew install wash
 
 2. Build the project:
    ```bash
-   go build -o wash cmd/wash/main.go
+   ./build.sh
    ```
 
-3. Install the binary:
+3. Move the binary to a directory in your PATH:
    ```bash
-   sudo mv wash /usr/local/bin/
+   mv wash /usr/local/bin/  # or ~/.local/bin/ for user-local installation
    ```
 
 ## Configuration
 
-1. Create a configuration file at `~/.wash/wash.yaml`:
-   ```yaml
-   openai_key: your_openai_api_key
-   ```
+Before using Wash CLI, you'll need to set up your OpenAI API key:
 
-   Alternatively, you can set the `OPENAI_API_KEY` environment variable.
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+```
+
+You can add this to your shell's configuration file (e.g., `~/.bashrc`, `~/.zshrc`) to make it permanent.
 
 ## Usage
+
+Basic commands:
+```bash
+wash monitor start    # Start monitoring your development workflow
+wash summary         # Get a summary of today's progress
+wash remember       # Save important information
+wash bug            # Report and track bugs
+```
+
+For more information about a specific command, use:
+```bash
+wash [command] --help
+```
 
 ### Code Analysis
 
@@ -60,91 +73,3 @@ Analyze a specific file:
 ```bash
 wash analyze-file path/to/file.go
 ```
-
-Analyze project structure:
-```bash
-wash analyze-project path/to/project
-```
-
-### Monitor Interactions
-
-Start monitoring:
-```bash
-wash monitor start
-```
-
-Stop monitoring:
-```bash
-wash monitor stop
-```
-
-### Screenshot Capture
-
-Capture a screenshot:
-```bash
-wash screenshot 0  # Capture display 0
-```
-
-### Note Taking
-
-Create a new note:
-```bash
-wash note "This is a new note"
-```
-
-### Version Information
-
-Check the version:
-```bash
-wash version
-```
-
-## Features
-
-- **Code Analysis**
-  - Analyze individual files for optimizations and improvements
-  - Analyze project structure and organization
-  - Get detailed feedback on code quality, performance, and security
-
-- **Monitor Interactions**
-  - Monitor and analyze interactions
-
-- **Screenshot Capture**
-  - Capture screenshots of specific displays
-  - Automatic timestamping and organization
-  - Support for multiple displays
-
-- **Note Taking**
-  - Create and manage markdown notes
-  - Automatic organization with timestamps
-  - List and view existing notes
-
-## Platform Support
-
-Wash supports the following platforms:
-- macOS (Intel and Apple Silicon)
-- Linux (amd64)
-- Windows (amd64)
-
-## Directory Structure
-
-```
-wash-cli/
-├── cmd/
-│   └── wash/           # Main CLI application
-├── internal/
-│   ├── analyzer/       # Code analysis functionality
-│   ├── monitor/        # File system monitoring
-│   ├── notes/          # Note-taking functionality
-│   └── screenshot/     # Screenshot capture
-└── pkg/
-    └── config/         # Configuration management
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
