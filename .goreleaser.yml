@@ -16,9 +16,6 @@ builds:
       - amd64
       - arm64
     ignore:
-      - goos: darwin
-        goarch: arm64
-        goarm: 7
       - goos: windows
         goarch: arm64
     main: ./cmd/wash/main.go
