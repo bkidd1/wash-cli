@@ -15,12 +15,12 @@ func TestNewTerminalAnalyzer(t *testing.T) {
 		t.Error("Expected analyzer to be created, got nil")
 	}
 
-	if analyzer.projectGoal != projectGoal {
-		t.Errorf("Expected projectGoal to be %s, got %s", projectGoal, analyzer.projectGoal)
+	if analyzer.GetProjectGoal() != projectGoal {
+		t.Errorf("Expected projectGoal to be %s, got %s", projectGoal, analyzer.GetProjectGoal())
 	}
 
-	if len(analyzer.rememberNotes) != len(rememberNotes) {
-		t.Errorf("Expected %d remember notes, got %d", len(rememberNotes), len(analyzer.rememberNotes))
+	if len(analyzer.GetRememberNotes()) != len(rememberNotes) {
+		t.Errorf("Expected %d remember notes, got %d", len(rememberNotes), len(analyzer.GetRememberNotes()))
 	}
 }
 
