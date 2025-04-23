@@ -4,11 +4,17 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/analyzer"
 	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/spf13/cobra"
+)
+
+var (
+	// Flags
+	goal string
 )
 
 // loadingAnimation shows a simple loading animation
@@ -21,7 +27,7 @@ func loadingAnimation(done chan bool) {
 			fmt.Printf("\r") // Clear the line
 			return
 		default:
-			fmt.Printf("\rWashing file... %s", spinner[i])
+			fmt.Printf("\rAnalyzing file... %s", spinner[i])
 			i = (i + 1) % len(spinner)
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -32,10 +38,30 @@ func loadingAnimation(done chan bool) {
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "file [path]",
-		Short: "Wash a single file for optimization opportunities",
-		Long: `Washes the specified file and suggests alternative coding pathways
-and optimizations. The washing focuses on code structure, performance,
-and maintainability. If no file path is provided, the currently open file will be used.`,
+		Short: "Analyze and optimize a single file",
+		Long: `Analyzes the specified file and suggests improvements for:
+- Code structure
+- Performance
+- Maintainability
+- Best practices
+- Security
+- Error handling
+
+The analysis provides:
+1. Code quality assessment
+2. Optimization suggestions
+3. Alternative implementations
+4. Best practice recommendations
+
+Examples:
+  # Analyze current file in editor
+  wash file
+
+  # Analyze specific file
+  wash file main.go
+
+  # Analyze with specific goal
+  wash file --goal "Improve error handling and logging" main.go`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Get the path to analyze
@@ -47,12 +73,19 @@ and maintainability. If no file path is provided, the currently open file will b
 				if selectedFile := os.Getenv("WASH_SELECTED_FILE"); selectedFile != "" {
 					path = selectedFile
 				} else {
-					// If no file is selected, try to get the current file from the editor
-					// This is a placeholder - we'll need to implement the actual editor integration
-					fmt.Println("No file path provided and no file is currently open in the editor.")
-					fmt.Println("Please either provide a file path or open a file in your editor.")
-					return nil
+					return fmt.Errorf("no file path provided and no file is currently open in the editor")
 				}
+			}
+
+			// Validate path exists
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				return fmt.Errorf("file does not exist: %s", path)
+			}
+
+			// Get absolute path
+			absPath, err := filepath.Abs(path)
+			if err != nil {
+				return fmt.Errorf("failed to get absolute path: %w", err)
 			}
 
 			// Load config
@@ -61,28 +94,38 @@ and maintainability. If no file path is provided, the currently open file will b
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
+			// Override project goal if specified
+			if goal != "" {
+				cfg.ProjectGoal = goal
+			}
+
 			// Create analyzer with project context
 			analyzer := analyzer.NewTerminalAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
 
-			// Create a channel to signal when washing is done
+			// Create a channel to signal when analysis is done
 			done := make(chan bool)
 			go loadingAnimation(done)
 
-			// Wash file
-			result, err := analyzer.AnalyzeFile(context.Background(), path)
+			// Analyze file
+			result, err := analyzer.AnalyzeFile(context.Background(), absPath)
 			if err != nil {
 				done <- true
-				return fmt.Errorf("failed to wash file: %w", err)
+				return fmt.Errorf("failed to analyze file: %w", err)
 			}
 
-			// Signal that washing is complete
+			// Signal that analysis is complete
 			done <- true
 
 			// Print results
+			fmt.Println("\nAnalysis Results:")
+			fmt.Println("----------------")
 			fmt.Println(result)
 			return nil
 		},
 	}
+
+	// Add flags
+	cmd.Flags().StringVar(&goal, "goal", "", "Specific goal for the file analysis")
 
 	return cmd
 }

@@ -34,7 +34,6 @@ type Monitor struct {
 }
 
 func NewMonitor(cfg *config.Config, projectName string) (*Monitor, error) {
-	fmt.Println("Creating new monitor...")
 	client := openai.NewClient(cfg.OpenAIKey)
 
 	// If project name not provided, use current directory name
@@ -103,7 +102,8 @@ func (m *Monitor) Start() error {
 
 func (m *Monitor) cleanup() {
 	if err := m.pidManager.Cleanup(); err != nil {
-		fmt.Printf("Warning: Failed to cleanup PID file: %v\n", err)
+		// Silently handle cleanup errors
+		_ = err
 	}
 }
 
@@ -136,20 +136,21 @@ func (m *Monitor) monitorLoop() {
 		case <-m.stopChan:
 			return
 		case <-screenshotTicker.C:
+			// Log screenshot analysis errors
 			if err := m.analyzeScreenshot(); err != nil {
-				fmt.Printf("Warning: Failed to analyze screenshot: %v\n", err)
+				fmt.Printf("Error analyzing screenshot: %v\n", err)
 			}
 		case <-progressTicker.C:
 			// Generate progress note for the last 5 minutes
 			progressNote, err := m.notesManager.GenerateProgressFromMonitor(m.projectName, 5*time.Minute)
 			if err != nil {
-				fmt.Printf("Warning: Failed to generate progress note: %v\n", err)
+				fmt.Printf("Error generating progress note: %v\n", err)
 				continue
 			}
 
 			// Save the progress note
 			if err := m.notesManager.SaveProjectProgress(progressNote); err != nil {
-				fmt.Printf("Warning: Failed to save progress note: %v\n", err)
+				fmt.Printf("Error saving progress note: %v\n", err)
 			}
 		}
 	}
@@ -288,14 +289,8 @@ Format your response as a JSON object with the following structure:
 		},
 	}
 
-	// Save note to file
-	noteFile := filepath.Join(m.notesDir, fmt.Sprintf("monitor_%s.json", time.Now().Format("2006-01-02-15-04-05")))
-	noteData, err := json.MarshalIndent(note, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal monitor note: %v", err)
-	}
-
-	if err := os.WriteFile(noteFile, noteData, 0644); err != nil {
+	// Save note using the notes manager
+	if err := m.notesManager.SaveMonitorNote(m.projectName, note); err != nil {
 		return fmt.Errorf("failed to save monitor note: %v", err)
 	}
 

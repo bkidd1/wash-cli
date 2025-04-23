@@ -155,6 +155,7 @@ func NewNotesManager() (*NotesManager, error) {
 		"analyze",       // Code analysis results
 		"config",        // User configuration and preferences
 		"errors",        // Error tracking and debugging
+		"progress",      // Project progress notes
 	}
 
 	for _, dir := range dirs {
@@ -455,60 +456,118 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 		return nil, fmt.Errorf("no monitor notes found in the last %v", duration)
 	}
 
-	// Analyze the notes to generate a progress summary
+	// Create the progress note
 	progressNote := &ProjectProgressNote{
+		Timestamp:   time.Now(),
+		ID:          uuid.New().String(),
 		ProjectName: projectName,
-		Type:        "monitor_summary",
-		Title:       fmt.Sprintf("Progress Summary - Last %v", duration),
+		Type:        "critical_analysis",
+		Title:       fmt.Sprintf("Critical Analysis - Last %v", duration),
 	}
 
-	// Track user requests and AI actions
-	userRequests := make(map[string]int) // User requests (with frequency)
-	aiActions := make(map[string]int)    // AI actions (with frequency)
+	// Track patterns and potential issues
+	var description strings.Builder
+	description.WriteString("Activity Summary:\n")
+	description.WriteString("----------------\n")
+
+	// Group interactions by type
+	var codingTasks, debuggingTasks, refactoringTasks, toolSelectionTasks []string
+	var potentialMistakes []string
+	var alternativeApproaches []string
 
 	for _, note := range recentNotes {
-		// Track user requests
-		if note.Interaction.UserRequest != "" {
-			userRequests[note.Interaction.UserRequest]++
+		// Categorize the interaction
+		interaction := fmt.Sprintf("User: %s\nAI: %s", note.Interaction.UserRequest, note.Interaction.AIAction)
+
+		// Analyze for potential mistakes
+		if strings.Contains(strings.ToLower(note.Interaction.AIAction), "error") ||
+			strings.Contains(strings.ToLower(note.Interaction.AIAction), "bug") ||
+			strings.Contains(strings.ToLower(note.Interaction.AIAction), "fix") {
+			potentialMistakes = append(potentialMistakes, interaction)
 		}
 
-		// Track AI actions
-		if note.Interaction.AIAction != "" {
-			aiActions[note.Interaction.AIAction]++
+		// Categorize by task type
+		if strings.Contains(strings.ToLower(note.Interaction.UserRequest), "code") ||
+			strings.Contains(strings.ToLower(note.Interaction.UserRequest), "implement") {
+			codingTasks = append(codingTasks, interaction)
+		} else if strings.Contains(strings.ToLower(note.Interaction.UserRequest), "debug") ||
+			strings.Contains(strings.ToLower(note.Interaction.UserRequest), "fix") {
+			debuggingTasks = append(debuggingTasks, interaction)
+		} else if strings.Contains(strings.ToLower(note.Interaction.UserRequest), "refactor") ||
+			strings.Contains(strings.ToLower(note.Interaction.UserRequest), "improve") {
+			refactoringTasks = append(refactoringTasks, interaction)
+		} else if strings.Contains(strings.ToLower(note.Interaction.UserRequest), "tool") ||
+			strings.Contains(strings.ToLower(note.Interaction.UserRequest), "library") {
+			toolSelectionTasks = append(toolSelectionTasks, interaction)
+		}
+
+		// Suggest alternative approaches
+		if strings.Contains(strings.ToLower(note.Interaction.AIAction), "using") ||
+			strings.Contains(strings.ToLower(note.Interaction.AIAction), "approach") {
+			alternativeApproaches = append(alternativeApproaches, interaction)
 		}
 	}
 
-	// Generate focused description
-	var description strings.Builder
-	description.WriteString("Progress Summary:\n\n")
-
-	// User Requests
-	description.WriteString("User Requests:\n")
-	if len(userRequests) > 0 {
-		for request, count := range userRequests {
-			description.WriteString(fmt.Sprintf("- %s (asked %d times)\n", request, count))
+	// Write activity summary
+	description.WriteString("\nRecent Activities:\n")
+	if len(codingTasks) > 0 {
+		description.WriteString("\nCoding Tasks:\n")
+		for _, task := range codingTasks {
+			description.WriteString(fmt.Sprintf("- %s\n", task))
 		}
-	} else {
-		description.WriteString("- No user requests tracked\n")
 	}
-	description.WriteString("\n")
-
-	// AI Actions
-	description.WriteString("AI Actions:\n")
-	if len(aiActions) > 0 {
-		for action, count := range aiActions {
-			description.WriteString(fmt.Sprintf("- %s (performed %d times)\n", action, count))
+	if len(debuggingTasks) > 0 {
+		description.WriteString("\nDebugging Tasks:\n")
+		for _, task := range debuggingTasks {
+			description.WriteString(fmt.Sprintf("- %s\n", task))
 		}
-	} else {
-		description.WriteString("- No AI actions tracked\n")
+	}
+	if len(refactoringTasks) > 0 {
+		description.WriteString("\nRefactoring Tasks:\n")
+		for _, task := range refactoringTasks {
+			description.WriteString(fmt.Sprintf("- %s\n", task))
+		}
+	}
+	if len(toolSelectionTasks) > 0 {
+		description.WriteString("\nTool Selection Tasks:\n")
+		for _, task := range toolSelectionTasks {
+			description.WriteString(fmt.Sprintf("- %s\n", task))
+		}
 	}
 
+	// Write potential mistakes
+	if len(potentialMistakes) > 0 {
+		description.WriteString("\nPotential Mistakes/Issues:\n")
+		description.WriteString("------------------------\n")
+		for _, mistake := range potentialMistakes {
+			description.WriteString(fmt.Sprintf("- %s\n", mistake))
+		}
+	}
+
+	// Write alternative approaches
+	if len(alternativeApproaches) > 0 {
+		description.WriteString("\nAlternative Approaches:\n")
+		description.WriteString("----------------------\n")
+		for _, approach := range alternativeApproaches {
+			description.WriteString(fmt.Sprintf("- %s\n", approach))
+		}
+	}
+
+	// Set the description
 	progressNote.Description = description.String()
+
+	// Set impact assessment
+	progressNote.Impact.Scope = "project-wide"
+	if len(potentialMistakes) > 0 {
+		progressNote.Impact.RiskLevel = "medium"
+	} else {
+		progressNote.Impact.RiskLevel = "low"
+	}
 
 	// Set metadata
 	progressNote.Metadata.Priority = PriorityMedium
 	progressNote.Metadata.Status = StatusOpen
-	progressNote.Metadata.Tags = []string{"monitor_summary", "auto_generated"}
+	progressNote.Metadata.Tags = []string{"critical_analysis", "auto_generated"}
 
 	return progressNote, nil
 }

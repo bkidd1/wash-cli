@@ -12,12 +12,39 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	// Flags
+	projectName string
+	tags        []string
+)
+
 // Command returns the remember command
 func Command() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "remember [content]",
-		Short: "Save something to remember",
-		Long:  `Save something to remember for your project. Items are stored in ~/.wash/remember/[project-name]/`,
+		Short: "Save important information to remember",
+		Long: `Save important information, notes, or reminders for your project.
+The remember command helps you keep track of:
+- Important decisions
+- Implementation details
+- Future tasks
+- Project-specific knowledge
+- Development patterns
+
+Notes are stored in ~/.wash/remember/[project-name]/
+
+Examples:
+  # Save a note interactively
+  wash remember
+
+  # Save a note directly
+  wash remember "Implement caching for better performance"
+
+  # Save a note with tags
+  wash remember "Add error handling" --tags "error,security"
+
+  # Save a note for specific project
+  wash remember "Update documentation" --project my-project`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var content string
 			if len(args) == 0 {
@@ -39,12 +66,14 @@ func Command() *cobra.Command {
 				return fmt.Errorf("content cannot be empty")
 			}
 
-			// Get current working directory for project name
-			cwd, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("failed to get current directory: %w", err)
+			// Get project name
+			if projectName == "" {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("failed to get current directory: %w", err)
+				}
+				projectName = filepath.Base(cwd)
 			}
-			projectName := filepath.Base(cwd)
 
 			// Create notes manager
 			notesManager, err := notes.NewNotesManager()
@@ -59,6 +88,7 @@ func Command() *cobra.Command {
 				Metadata: map[string]interface{}{
 					"project": projectName,
 					"type":    "remember",
+					"tags":    tags,
 				},
 			}
 
@@ -73,8 +103,19 @@ func Command() *cobra.Command {
 				return fmt.Errorf("failed to save note: %w", err)
 			}
 
-			fmt.Printf("Saved successfully at %s\n", note.Timestamp.Format(time.RFC3339))
+			fmt.Printf("\nNote saved successfully!\n")
+			fmt.Printf("Time: %s\n", note.Timestamp.Format(time.RFC3339))
+			fmt.Printf("Project: %s\n", projectName)
+			if len(tags) > 0 {
+				fmt.Printf("Tags: %s\n", strings.Join(tags, ", "))
+			}
 			return nil
 		},
 	}
+
+	// Add flags
+	cmd.Flags().StringVarP(&projectName, "project", "p", "", "Project name (defaults to current directory name)")
+	cmd.Flags().StringSliceVarP(&tags, "tags", "t", []string{}, "Tags for the note (comma-separated)")
+
+	return cmd
 }

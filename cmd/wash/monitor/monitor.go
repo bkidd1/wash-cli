@@ -13,14 +13,41 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	// Global flags
+	projectName string
+)
+
 // Command creates the monitor command with start and stop subcommands
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "monitor",
-		Short: "Monitor and analyze interactions",
-		Long:  "Monitor and analyze interactions for insights and improvements",
+		Short: "Monitor and analyze development interactions",
+		Long: `Monitor and analyze your development workflow to provide insights and improvements.
+The monitor tracks:
+- Code changes
+- Development patterns
+- Interaction patterns
+- Time spent on tasks
+- Project progress
+
+Use the start and stop subcommands to control monitoring.
+
+Examples:
+  # Start monitoring current project
+  wash monitor start
+
+  # Start monitoring specific project
+  wash monitor start --project my-project
+
+  # Stop monitoring
+  wash monitor stop`,
 	}
 
+	// Add global flags
+	cmd.PersistentFlags().StringVarP(&projectName, "project", "p", "", "Project name (defaults to current directory name)")
+
+	// Add subcommands
 	cmd.AddCommand(startCmd())
 	cmd.AddCommand(stopCmd())
 
@@ -28,11 +55,15 @@ func Command() *cobra.Command {
 }
 
 func startCmd() *cobra.Command {
-	var projectName string
-
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Start monitoring",
+		Short: "Start monitoring development workflow",
+		Long: `Start monitoring your development workflow to track progress and provide insights.
+The monitor will:
+1. Track code changes and interactions
+2. Analyze development patterns
+3. Generate progress reports
+4. Provide optimization suggestions`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// If project name not provided, use current directory name
 			if projectName == "" {
@@ -69,8 +100,7 @@ func startCmd() *cobra.Command {
 				return fmt.Errorf("failed to start monitor: %w", err)
 			}
 
-			fmt.Printf("Monitoring started for project: %s\n", projectName)
-			fmt.Println("Press Ctrl+C to stop monitoring...")
+			fmt.Printf("Monitoring started for %s\n", projectName)
 
 			// Start timer display
 			ticker := time.NewTicker(time.Second)
@@ -87,20 +117,24 @@ func startCmd() *cobra.Command {
 					hours := int(elapsed.Hours())
 					minutes := int(elapsed.Minutes()) % 60
 					seconds := int(elapsed.Seconds()) % 60
-					fmt.Printf("\rMonitoring time: %02d:%02d:%02d", hours, minutes, seconds)
+					fmt.Printf("\rRunning for: %02d:%02d:%02d", hours, minutes, seconds)
 				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVarP(&projectName, "project", "p", "", "Project name (defaults to current directory name)")
 	return cmd
 }
 
 func stopCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "stop",
-		Short: "Stop monitoring",
+		Short: "Stop monitoring development workflow",
+		Long: `Stop the development workflow monitor.
+This will:
+1. Stop tracking new changes
+2. Save current progress
+3. Generate final report`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load configuration
 			cfg, err := config.LoadConfig()
@@ -109,7 +143,7 @@ func stopCmd() *cobra.Command {
 			}
 
 			// Create monitor
-			m, err := chatmonitor.NewMonitor(cfg, "")
+			m, err := chatmonitor.NewMonitor(cfg, projectName)
 			if err != nil {
 				return fmt.Errorf("failed to create monitor: %w", err)
 			}
@@ -122,4 +156,6 @@ func stopCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	return cmd
 }
