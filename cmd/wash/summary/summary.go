@@ -10,31 +10,59 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	// Flags
+	projectName string
+	date        string
+)
+
 // Command returns the summary command
 func Command() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "summary",
-		Short: "Get a summary of your recent progress",
-		Long: `Get a summary of your recent progress, including recent notes, decisions, and changes.
-This command provides an overview of your project's recent activity.`,
+		Short: "Get a summary of project progress",
+		Long: `Get a comprehensive summary of your project's progress, including:
+- Recent changes and updates
+- Key decisions and their impact
+- File modifications
+- Risk assessments
+- Alternative approaches considered
+
+The summary provides insights into:
+1. What has been accomplished
+2. Potential issues to watch for
+3. Areas for improvement
+4. Next steps
+
+Examples:
+  # Get summary for current project
+  wash summary
+
+  # Get summary for specific project
+  wash summary --project my-project
+
+  # Get summary for specific date
+  wash summary --date 2024-04-23`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Get current working directory for project name
-			cwd, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("failed to get current directory: %v", err)
+			// Get project name
+			if projectName == "" {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("failed to get current directory: %w", err)
+				}
+				projectName = filepath.Base(cwd)
 			}
-			projectName := filepath.Base(cwd)
 
 			// Create notes manager
 			notesManager, err := notes.NewNotesManager()
 			if err != nil {
-				return fmt.Errorf("failed to create notes manager: %v", err)
+				return fmt.Errorf("failed to create notes manager: %w", err)
 			}
 
 			// Get all progress notes
 			progressNotes, err := notesManager.LoadProjectProgress(projectName)
 			if err != nil {
-				return fmt.Errorf("failed to load progress notes: %v", err)
+				return fmt.Errorf("failed to load progress notes: %w", err)
 			}
 
 			if len(progressNotes) == 0 {
@@ -42,19 +70,27 @@ This command provides an overview of your project's recent activity.`,
 				return nil
 			}
 
-			// Find notes for today or most recent day
-			today := time.Now().Truncate(24 * time.Hour)
-			var targetNotes []*notes.ProjectProgressNote
+			// Parse target date if provided
 			var targetDate time.Time
+			if date != "" {
+				parsedDate, err := time.Parse("2006-01-02", date)
+				if err != nil {
+					return fmt.Errorf("invalid date format. Please use YYYY-MM-DD: %w", err)
+				}
+				targetDate = parsedDate
+			} else {
+				targetDate = time.Now().Truncate(24 * time.Hour)
+			}
 
-			// First try to find notes from today
+			// Find notes for target date
+			var targetNotes []*notes.ProjectProgressNote
 			for _, note := range progressNotes {
-				if note.Timestamp.Truncate(24 * time.Hour).Equal(today) {
+				if note.Timestamp.Truncate(24 * time.Hour).Equal(targetDate) {
 					targetNotes = append(targetNotes, note)
 				}
 			}
 
-			// If no notes from today, find the most recent day with notes
+			// If no notes for target date, find the most recent day with notes
 			if len(targetNotes) == 0 {
 				var mostRecent time.Time
 				for _, note := range progressNotes {
@@ -67,12 +103,11 @@ This command provides an overview of your project's recent activity.`,
 					}
 				}
 				targetDate = mostRecent
-			} else {
-				targetDate = today
+				fmt.Printf("No notes found for specified date. Showing most recent notes from %s\n", targetDate.Format("2006-01-02"))
 			}
 
 			// Print summary
-			fmt.Printf("Progress Summary for %s - %s\n", projectName, targetDate.Format("2006-01-02"))
+			fmt.Printf("\nProgress Summary for %s - %s\n", projectName, targetDate.Format("2006-01-02"))
 			fmt.Println("----------------------------------------")
 
 			// Section 1: Progress Made
@@ -125,4 +160,10 @@ This command provides an overview of your project's recent activity.`,
 			return nil
 		},
 	}
+
+	// Add flags
+	cmd.Flags().StringVarP(&projectName, "project", "p", "", "Project name (defaults to current directory name)")
+	cmd.Flags().StringVarP(&date, "date", "d", "", "Date to show summary for (format: YYYY-MM-DD)")
+
+	return cmd
 }
