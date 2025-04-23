@@ -54,7 +54,7 @@ DO NOT include any introductory text, summaries, conclusions or direct reference
 
 // TerminalAnalyzer represents a code analyzer that returns formatted terminal output
 type TerminalAnalyzer struct {
-	Client        *openai.Client
+	client        *openai.Client
 	projectGoal   string
 	rememberNotes []string
 	notesManager  *notes.NotesManager
@@ -77,7 +77,7 @@ func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []stri
 	}
 
 	return &TerminalAnalyzer{
-		Client:        client,
+		client:        client,
 		projectGoal:   projectGoal,
 		rememberNotes: rememberNotes,
 		notesManager:  notesManager,
@@ -152,7 +152,7 @@ func (a *TerminalAnalyzer) AnalyzeFile(ctx context.Context, filePath string) (st
 		return "", fmt.Errorf("error reading file: %w", err)
 	}
 
-	resp, err := a.Client.CreateChatCompletion(
+	resp, err := a.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4,
@@ -204,7 +204,7 @@ func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, dirPath 
 		return "", fmt.Errorf("error walking directory: %w", err)
 	}
 
-	resp, err := a.Client.CreateChatCompletion(
+	resp, err := a.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4,
@@ -235,7 +235,7 @@ func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, dirPath 
 
 // AnalyzeChat analyzes chat history and returns formatted terminal output
 func (a *TerminalAnalyzer) AnalyzeChat(ctx context.Context, chatHistory string) (string, error) {
-	resp, err := a.Client.CreateChatCompletion(
+	resp, err := a.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4,
@@ -266,7 +266,7 @@ func (a *TerminalAnalyzer) AnalyzeChat(ctx context.Context, chatHistory string) 
 
 // GetErrorFix analyzes chat history for specific error patterns and returns formatted terminal output
 func (a *TerminalAnalyzer) GetErrorFix(ctx context.Context, chatHistory string, errorType string) (string, error) {
-	resp, err := a.Client.CreateChatCompletion(
+	resp, err := a.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4,
@@ -309,7 +309,7 @@ func (a *TerminalAnalyzer) AnalyzeBug(ctx context.Context, description string) (
 	contextPrompt := a.getContextualPrompt()
 
 	// Create chat completion request
-	resp, err := a.Client.CreateChatCompletion(
+	resp, err := a.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: "gpt-4",
@@ -379,4 +379,14 @@ func parseSections(content string) map[string]string {
 	}
 
 	return sections
+}
+
+// GetProjectGoal returns the project goal
+func (a *TerminalAnalyzer) GetProjectGoal() string {
+	return a.projectGoal
+}
+
+// GetRememberNotes returns the remember notes
+func (a *TerminalAnalyzer) GetRememberNotes() []string {
+	return a.rememberNotes
 }
