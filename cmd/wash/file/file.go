@@ -27,7 +27,7 @@ func loadingAnimation(done chan bool) {
 			fmt.Printf("\r") // Clear the line
 			return
 		default:
-			fmt.Printf("\rAnalyzing file... %s", spinner[i])
+			fmt.Printf("\rWashing file... %s", spinner[i])
 			i = (i + 1) % len(spinner)
 			time.Sleep(100 * time.Millisecond)
 		}

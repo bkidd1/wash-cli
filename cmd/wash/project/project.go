@@ -95,7 +95,7 @@ Examples:
 			}
 
 			// Create analyzer with project context
-			analyzer := analyzer.NewTerminalAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, cfg.RememberNotes)
+			analyzer := analyzer.NewTerminalAnalyzer(cfg.OpenAIKey, cfg.ProjectGoal, nil)
 
 			// Create a channel to signal when washing is done
 			done := make(chan bool)
