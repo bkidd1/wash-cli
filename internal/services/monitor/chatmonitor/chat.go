@@ -224,77 +224,106 @@ func (m *Monitor) analyzeScreenshot() error {
 	contextStr := formatContextForAI(recentRecords)
 
 	// Create the analysis prompt with context
-	prompt := `You are observing a conversation between a user and an AI coding assistant.
-Your task is to simply describe what is happening in this interaction.
+	prompt := `You are observing a conversation between a user and an AI coding assistant in the Cursor IDE.
+Your task is to analyze the screenshot and provide a detailed summary of the interaction.
 
-Based on the screenshot, please describe:
-1. What the user is asking or requesting
-2. What the AI assistant is doing in response
+Based on the screenshot, please analyze:
+1. The user's request or question (what they're trying to accomplish)
+2. The AI assistant's response and actions
+3. Any code changes or modifications being discussed
+4. The overall context of the interaction (e.g., debugging, feature implementation)
 
 Format your response as a JSON object with the following structure:
 {
-    "user_request": "brief description of what the user is asking",
-    "ai_action": "brief description of what the AI is doing"
+    "user_request": "detailed description of what the user is asking and trying to accomplish",
+    "ai_action": "detailed description of the AI's response and actions",
+    "context": "overall context of the interaction (e.g., debugging, feature implementation)",
+    "code_changes": ["code changes or modifications occuring or being discussed"]
 }` + "\n\n" + contextStr
 
-	// Create the chat completion request
-	resp, err := m.client.CreateChatCompletion(
-		context.Background(),
-		openai.ChatCompletionRequest{
-			Model: "gpt-4.1-mini",
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role: "user",
-					MultiContent: []openai.ChatMessagePart{
-						{
-							Type: "text",
-							Text: prompt,
-						},
-						{
-							Type: "image_url",
-							ImageURL: &openai.ChatMessageImageURL{
-								URL: fmt.Sprintf("data:image/png;base64,%s", screenshotBase64),
+	// Add retry logic for transient network errors
+	maxRetries := 3
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		// Create the chat completion request
+		resp, err := m.client.CreateChatCompletion(
+			context.Background(),
+			openai.ChatCompletionRequest{
+				Model: "gpt-4.1-mini",
+				Messages: []openai.ChatCompletionMessage{
+					{
+						Role: "user",
+						MultiContent: []openai.ChatMessagePart{
+							{
+								Type: "text",
+								Text: prompt,
+							},
+							{
+								Type: "image_url",
+								ImageURL: &openai.ChatMessageImageURL{
+									URL: fmt.Sprintf("data:image/png;base64,%s", screenshotBase64),
+								},
 							},
 						},
 					},
 				},
+				MaxTokens: 1000,
 			},
-			MaxTokens: 1000,
-		},
-	)
-	if err != nil {
+		)
+		if err == nil {
+			// Parse the response into an analysis struct
+			var analysis struct {
+				UserRequest string   `json:"user_request"`
+				AIAction    string   `json:"ai_action"`
+				Context     string   `json:"context"`
+				CodeChanges []string `json:"code_changes"`
+			}
+
+			if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &analysis); err != nil {
+				return fmt.Errorf("failed to parse analysis response: %v", err)
+			}
+
+			// Create a new monitor note
+			note := &notes.MonitorNote{
+				Timestamp:   time.Now(),
+				ProjectName: m.projectName,
+				Interaction: struct {
+					UserRequest string   `json:"user_request"`
+					AIAction    string   `json:"ai_action"`
+					Context     string   `json:"context"`
+					CodeChanges []string `json:"code_changes"`
+				}{
+					UserRequest: analysis.UserRequest,
+					AIAction:    analysis.AIAction,
+					Context:     analysis.Context,
+					CodeChanges: analysis.CodeChanges,
+				},
+			}
+
+			// Save note using the notes manager
+			if err := m.notesManager.SaveMonitorNote(m.projectName, note); err != nil {
+				return fmt.Errorf("failed to save monitor note: %v", err)
+			}
+
+			return nil
+		}
+
+		// Check if this is a retryable error
+		if strings.Contains(err.Error(), "tls: bad record MAC") ||
+			strings.Contains(err.Error(), "connection reset by peer") ||
+			strings.Contains(err.Error(), "i/o timeout") {
+			lastErr = err
+			// Wait before retrying (exponential backoff)
+			time.Sleep(time.Duration(i+1) * time.Second)
+			continue
+		}
+
+		// If it's not a retryable error, return immediately
 		return fmt.Errorf("failed to analyze screenshot: %v", err)
 	}
 
-	// Parse the response into an analysis struct
-	var analysis struct {
-		UserRequest string `json:"user_request"`
-		AIAction    string `json:"ai_action"`
-	}
-
-	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &analysis); err != nil {
-		return fmt.Errorf("failed to parse analysis response: %v", err)
-	}
-
-	// Create a new monitor note
-	note := &notes.MonitorNote{
-		Timestamp:   time.Now(),
-		ProjectName: m.projectName,
-		Interaction: struct {
-			UserRequest string `json:"user_request"`
-			AIAction    string `json:"ai_action"`
-		}{
-			UserRequest: analysis.UserRequest,
-			AIAction:    analysis.AIAction,
-		},
-	}
-
-	// Save note using the notes manager
-	if err := m.notesManager.SaveMonitorNote(m.projectName, note); err != nil {
-		return fmt.Errorf("failed to save monitor note: %v", err)
-	}
-
-	return nil
+	// If we've exhausted all retries, return the last error
+	return fmt.Errorf("failed to analyze screenshot after %d retries: %v", maxRetries, lastErr)
 }
 
 // StartTime returns the time when the monitor was started

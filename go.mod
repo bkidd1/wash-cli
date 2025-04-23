@@ -6,7 +6,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/uuid v1.6.0
 	github.com/kbinani/screenshot v0.0.0-20250118074034-a3924b7bbc8c
-	github.com/sashabaranov/go-openai v1.24.0
+	github.com/sashabaranov/go-openai v1.38.2
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 )

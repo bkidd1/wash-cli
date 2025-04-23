@@ -76,28 +76,6 @@ func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []stri
 		notesManager = nil
 	}
 
-	// Get remember notes from notes manager if available
-	if notesManager != nil {
-		// Get current working directory for project name
-		cwd, err := os.Getwd()
-		if err == nil {
-			projectName := filepath.Base(cwd)
-			// Get current user
-			username := os.Getenv("USER")
-			if username == "" {
-				username = "default"
-			}
-			// Get remember notes for this user and project
-			notes, err := notesManager.GetUserNotes(username, projectName)
-			if err == nil {
-				rememberNotes = make([]string, len(notes))
-				for i, note := range notes {
-					rememberNotes[i] = note.Content
-				}
-			}
-		}
-	}
-
 	return &TerminalAnalyzer{
 		Client:        client,
 		projectGoal:   projectGoal,
@@ -106,24 +84,14 @@ func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []stri
 	}
 }
 
-// UpdateProjectContext updates the project goal and remember notes
-func (a *TerminalAnalyzer) UpdateProjectContext(projectGoal string, rememberNotes []string) {
+// UpdateProjectContext updates the project goal
+func (a *TerminalAnalyzer) UpdateProjectContext(projectGoal string) {
 	a.projectGoal = projectGoal
-	a.rememberNotes = rememberNotes
 }
 
 // getContextualPrompt returns the system prompt with project context
 func (a *TerminalAnalyzer) getContextualPrompt() string {
 	var context strings.Builder
-
-	// Add remember notes if they exist (TOP PRIORITY)
-	if len(a.rememberNotes) > 0 {
-		context.WriteString("CRITICAL USER REMINDERS (MUST CONSIDER THESE FIRST):\n")
-		for i, note := range a.rememberNotes {
-			context.WriteString(fmt.Sprintf("%d. %s\n", i+1, note))
-		}
-		context.WriteString("\n")
-	}
 
 	// Add recent monitor notes if available
 	if a.notesManager != nil {
@@ -171,10 +139,10 @@ func (a *TerminalAnalyzer) getContextualPrompt() string {
 		}
 	}
 
-	// Add project goal (LOWEST PRIORITY)
+	// Add project goal
 	context.WriteString(fmt.Sprintf("PROJECT GOAL:\n%s\n\n", a.projectGoal))
 
-	return fmt.Sprintf("%s\n%s", context.String(), terminalSystemPrompt)
+	return context.String()
 }
 
 // AnalyzeFile analyzes a single file and returns formatted terminal output

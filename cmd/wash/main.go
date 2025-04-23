@@ -41,9 +41,11 @@ func init() {
 	// Add commands
 	rootCmd.AddCommand(project.Command())
 	rootCmd.AddCommand(file.Command())
-	rootCmd.AddCommand(monitor.Command())
-	rootCmd.AddCommand(remember.Command())
-	rootCmd.AddCommand(summary.Command())
+	rootCmd.AddCommand(
+		monitor.Command(),
+		remember.Command(),
+		summary.Command(),
+	)
 	rootCmd.AddCommand(bug.Command())
 	rootCmd.AddCommand(versioncmd.Command())
 

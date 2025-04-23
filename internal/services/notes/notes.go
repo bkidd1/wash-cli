@@ -72,8 +72,10 @@ type MonitorNote struct {
 	Timestamp   time.Time `json:"timestamp"`
 	ProjectName string    `json:"project_name"`
 	Interaction struct {
-		UserRequest string `json:"user_request"`
-		AIAction    string `json:"ai_action"`
+		UserRequest string   `json:"user_request"`
+		AIAction    string   `json:"ai_action"`
+		Context     string   `json:"context"`
+		CodeChanges []string `json:"code_changes"`
 	} `json:"interaction"`
 }
 
@@ -640,4 +642,44 @@ func (nm *NotesManager) SaveMonitorNote(projectName string, note *MonitorNote) e
 	}
 
 	return nil
+}
+
+// GetProgressNotes retrieves all progress notes for a specific project
+func (nm *NotesManager) GetProgressNotes(projectName string) ([]*ProjectProgressNote, error) {
+	progressDir := filepath.Join(nm.baseDir, "progress")
+	if err := os.MkdirAll(progressDir, 0755); err != nil {
+		return nil, fmt.Errorf("error creating progress directory: %w", err)
+	}
+
+	entries, err := os.ReadDir(progressDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading progress directory: %w", err)
+	}
+
+	var notes []*ProjectProgressNote
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+
+		// Check if the file belongs to the specified project
+		if !strings.HasPrefix(entry.Name(), projectName+"_") {
+			continue
+		}
+
+		filePath := filepath.Join(progressDir, entry.Name())
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("error reading progress note file %s: %w", entry.Name(), err)
+		}
+
+		var note ProjectProgressNote
+		if err := json.Unmarshal(data, &note); err != nil {
+			return nil, fmt.Errorf("error unmarshaling progress note from %s: %w", entry.Name(), err)
+		}
+
+		notes = append(notes, &note)
+	}
+
+	return notes, nil
 }

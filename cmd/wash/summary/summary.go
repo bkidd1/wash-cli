@@ -7,163 +7,128 @@ import (
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/notes"
+	"github.com/sashabaranov/go-openai"
+
 	"github.com/spf13/cobra"
 )
 
-var (
-	// Flags
-	projectName string
-	date        string
-)
-
-// Command returns the summary command
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "summary",
-		Short: "Get a summary of project progress",
-		Long: `Get a comprehensive summary of your project's progress, including:
-- Recent changes and updates
-- Key decisions and their impact
-- File modifications
-- Risk assessments
-- Alternative approaches considered
-
-The summary provides insights into:
-1. What has been accomplished
-2. Potential issues to watch for
-3. Areas for improvement
-4. Next steps
-
-Examples:
-  # Get summary for current project
-  wash summary
-
-  # Get summary for specific project
-  wash summary --project my-project
-
-  # Get summary for specific date
-  wash summary --date 2024-04-23`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Get project name
-			if projectName == "" {
-				cwd, err := os.Getwd()
-				if err != nil {
-					return fmt.Errorf("failed to get current directory: %w", err)
-				}
-				projectName = filepath.Base(cwd)
-			}
-
-			// Create notes manager
-			notesManager, err := notes.NewNotesManager()
-			if err != nil {
-				return fmt.Errorf("failed to create notes manager: %w", err)
-			}
-
-			// Get all progress notes
-			progressNotes, err := notesManager.LoadProjectProgress(projectName)
-			if err != nil {
-				return fmt.Errorf("failed to load progress notes: %w", err)
-			}
-
-			if len(progressNotes) == 0 {
-				fmt.Println("No progress notes found.")
-				return nil
-			}
-
-			// Parse target date if provided
-			var targetDate time.Time
-			if date != "" {
-				parsedDate, err := time.Parse("2006-01-02", date)
-				if err != nil {
-					return fmt.Errorf("invalid date format. Please use YYYY-MM-DD: %w", err)
-				}
-				targetDate = parsedDate
-			} else {
-				targetDate = time.Now().Truncate(24 * time.Hour)
-			}
-
-			// Find notes for target date
-			var targetNotes []*notes.ProjectProgressNote
-			for _, note := range progressNotes {
-				if note.Timestamp.Truncate(24 * time.Hour).Equal(targetDate) {
-					targetNotes = append(targetNotes, note)
-				}
-			}
-
-			// If no notes for target date, find the most recent day with notes
-			if len(targetNotes) == 0 {
-				var mostRecent time.Time
-				for _, note := range progressNotes {
-					noteDate := note.Timestamp.Truncate(24 * time.Hour)
-					if noteDate.After(mostRecent) {
-						mostRecent = noteDate
-						targetNotes = []*notes.ProjectProgressNote{note}
-					} else if noteDate.Equal(mostRecent) {
-						targetNotes = append(targetNotes, note)
-					}
-				}
-				targetDate = mostRecent
-				fmt.Printf("No notes found for specified date. Showing most recent notes from %s\n", targetDate.Format("2006-01-02"))
-			}
-
-			// Print summary
-			fmt.Printf("\nProgress Summary for %s - %s\n", projectName, targetDate.Format("2006-01-02"))
-			fmt.Println("----------------------------------------")
-
-			// Section 1: Progress Made
-			fmt.Println("\nProgress Made:")
-			fmt.Println("-------------")
-			for _, note := range targetNotes {
-				fmt.Printf("- %s\n", note.Title)
-				if note.Description != "" {
-					fmt.Printf("  %s\n", note.Description)
-				}
-			}
-
-			// Section 2: Potential Mistakes and Alternatives
-			fmt.Println("\nPotential Mistakes and Alternatives:")
-			fmt.Println("-----------------------------------")
-			for _, note := range targetNotes {
-				if note.Impact.RiskLevel != "" {
-					fmt.Printf("In '%s':\n", note.Title)
-					if note.Impact.Scope != "" {
-						fmt.Printf("  Decision: %s\n", note.Impact.Scope)
-					}
-					fmt.Printf("  Risk Level: %s\n", note.Impact.RiskLevel)
-					if len(note.Impact.AffectedAreas) > 0 {
-						fmt.Println("  Alternative Approaches:")
-						for _, area := range note.Impact.AffectedAreas {
-							fmt.Printf("  - %s\n", area)
-						}
-					}
-					fmt.Println()
-				}
-			}
-
-			// Section 3: File Changes
-			fmt.Println("\nFiles Changed:")
-			fmt.Println("-------------")
-			allFiles := make(map[string]bool)
-			for _, note := range targetNotes {
-				for _, file := range note.Changes.FilesModified {
-					allFiles[file] = true
-				}
-			}
-			if len(allFiles) == 0 {
-				fmt.Println("No files were modified.")
-			} else {
-				for file := range allFiles {
-					fmt.Printf("- %s\n", file)
-				}
-			}
-
-			return nil
-		},
+		Short: "Show a summary of project progress",
+		RunE:  runSummary,
 	}
 
-	// Add flags
-	cmd.Flags().StringVarP(&projectName, "project", "p", "", "Project name (defaults to current directory name)")
-	cmd.Flags().StringVarP(&date, "date", "d", "", "Date to show summary for (format: YYYY-MM-DD)")
+	cmd.Flags().StringP("date", "d", "", "Date to show summary for (YYYY-MM-DD)")
+	cmd.Flags().StringP("project", "p", "", "Project name to show summary for")
 
 	return cmd
+}
+
+func runSummary(cmd *cobra.Command, args []string) error {
+	dateStr, _ := cmd.Flags().GetString("date")
+	projectName, _ := cmd.Flags().GetString("project")
+
+	// If no project name provided, use current directory name
+	if projectName == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %v", err)
+		}
+		projectName = filepath.Base(cwd)
+	}
+
+	var targetDate time.Time
+	var err error
+	if dateStr != "" {
+		targetDate, err = time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			return fmt.Errorf("invalid date format: %v", err)
+		}
+	} else {
+		targetDate = time.Now()
+	}
+
+	// Get progress notes
+	notesManager, err := notes.NewNotesManager()
+	if err != nil {
+		return fmt.Errorf("failed to initialize notes manager: %v", err)
+	}
+	progressNotes, err := notesManager.GetProgressNotes(projectName)
+	if err != nil {
+		return fmt.Errorf("failed to get progress notes: %v", err)
+	}
+
+	// Filter notes for target date
+	var targetNotes []*notes.ProjectProgressNote
+	for _, note := range progressNotes {
+		if note.Timestamp.Year() == targetDate.Year() &&
+			note.Timestamp.Month() == targetDate.Month() &&
+			note.Timestamp.Day() == targetDate.Day() {
+			targetNotes = append(targetNotes, note)
+		}
+	}
+
+	if len(targetNotes) == 0 {
+		fmt.Printf("No progress notes found for project %s on %s\n", projectName, targetDate.Format("2006-01-02"))
+		return nil
+	}
+
+	// Prepare the prompt for AI analysis
+	var prompt string
+	prompt = fmt.Sprintf("Please analyze these progress notes and provide a concise summary of the day's work. Focus on:\n\n")
+	prompt += "1. Key achievements and progress made\n"
+	prompt += "2. Any challenges or issues encountered\n"
+	prompt += "3. Important decisions or changes\n\n"
+	prompt += "Progress Notes:\n\n"
+
+	for _, note := range targetNotes {
+		prompt += fmt.Sprintf("Title: %s\n", note.Title)
+		prompt += fmt.Sprintf("Description: %s\n", note.Description)
+		if len(note.Changes.FilesModified) > 0 {
+			prompt += "Files Modified:\n"
+			for _, file := range note.Changes.FilesModified {
+				prompt += fmt.Sprintf("- %s\n", file)
+			}
+		}
+		prompt += fmt.Sprintf("Risk Level: %s\n", note.Impact.RiskLevel)
+		prompt += "---\n"
+	}
+
+	// Get OpenAI API key from environment
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("OPENAI_API_KEY environment variable not set")
+	}
+
+	// Create OpenAI client
+	client := openai.NewClient(apiKey)
+
+	// Generate summary using AI
+	resp, err := client.CreateChatCompletion(
+		cmd.Context(),
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: "You are a helpful assistant that summarizes project progress notes in a clear and concise manner.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt,
+				},
+			},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to generate summary: %v", err)
+	}
+
+	// Print the summary
+	fmt.Printf("\nProgress Summary for %s - %s\n", projectName, targetDate.Format("2006-01-02"))
+	fmt.Println("------------------------")
+	fmt.Println(resp.Choices[0].Message.Content)
+
+	return nil
 }
