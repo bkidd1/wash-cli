@@ -308,6 +308,14 @@ func (a *TerminalAnalyzer) AnalyzeBug(ctx context.Context, description string) (
 	// Get project context from remember notes
 	contextPrompt := a.getContextualPrompt()
 
+	// Add remember notes to the context if they exist
+	if len(a.rememberNotes) > 0 {
+		contextPrompt += "\n\nREMEMBER NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n"
+		for _, note := range a.rememberNotes {
+			contextPrompt += fmt.Sprintf("- %s\n", note)
+		}
+	}
+
 	// Create chat completion request
 	resp, err := a.client.CreateChatCompletion(
 		ctx,

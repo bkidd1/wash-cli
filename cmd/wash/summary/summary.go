@@ -1,15 +1,38 @@
 package summary
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/notes"
 	"github.com/sashabaranov/go-openai"
 
 	"github.com/spf13/cobra"
+)
+
+const (
+	// Maximum number of notes to process in a single batch
+	maxBatchSize = 2
+	// Delay between API calls in milliseconds
+	apiCallDelay = 2000
+	// System prompt for the initial summarization
+	batchSystemPrompt = `Summarize these progress notes concisely:
+1. Key activities/achievements
+2. Challenges/solutions
+3. Important decisions
+Be brief and factual.`
+	// System prompt for combining summaries
+	combineSummaryPrompt = `Combine these summaries into a daily summary for %s.
+Focus on:
+1. Key achievements
+2. Challenges/resolutions
+3. Important decisions
+Be concise.`
 )
 
 func Command() *cobra.Command {
@@ -23,6 +46,84 @@ func Command() *cobra.Command {
 	cmd.Flags().StringP("project", "p", "", "Project name to show summary for")
 
 	return cmd
+}
+
+// processBatch generates a summary for a batch of notes
+func processBatch(client *openai.Client, notes []*notes.ProjectProgressNote) (string, error) {
+	var prompt strings.Builder
+	prompt.WriteString("Summarize these notes:\n\n")
+
+	for _, note := range notes {
+		prompt.WriteString(fmt.Sprintf("%s: %s\n", note.Timestamp.Format("15:04"), note.Title))
+		prompt.WriteString(fmt.Sprintf("%s\n", note.Description))
+		if len(note.Changes.FilesModified) > 0 {
+			prompt.WriteString("Files: ")
+			for i, file := range note.Changes.FilesModified {
+				if i > 0 {
+					prompt.WriteString(", ")
+				}
+				prompt.WriteString(filepath.Base(file))
+			}
+			prompt.WriteString("\n")
+		}
+		prompt.WriteString("---\n")
+	}
+
+	resp, err := client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: batchSystemPrompt,
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt.String(),
+				},
+			},
+			MaxTokens: 500,
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate batch summary: %w", err)
+	}
+
+	return resp.Choices[0].Message.Content, nil
+}
+
+// combineSummaries combines multiple batch summaries into a final summary
+func combineSummaries(client *openai.Client, summaries []string, date time.Time) (string, error) {
+	var prompt strings.Builder
+	prompt.WriteString(fmt.Sprintf("Combine these summaries for %s:\n\n", date.Format("2006-01-02")))
+
+	for i, summary := range summaries {
+		prompt.WriteString(fmt.Sprintf("Summary %d:\n%s\n---\n", i+1, summary))
+	}
+
+	resp, err := client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: fmt.Sprintf(combineSummaryPrompt, date.Format("2006-01-02")),
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt.String(),
+				},
+			},
+			MaxTokens: 1000,
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to combine summaries: %w", err)
+	}
+
+	return resp.Choices[0].Message.Content, nil
 }
 
 func runSummary(cmd *cobra.Command, args []string) error {
@@ -59,7 +160,7 @@ func runSummary(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get progress notes: %v", err)
 	}
 
-	// Filter notes for target date
+	// Filter notes for target date and sort by timestamp
 	var targetNotes []*notes.ProjectProgressNote
 	for _, note := range progressNotes {
 		if note.Timestamp.Year() == targetDate.Year() &&
@@ -74,26 +175,10 @@ func runSummary(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Prepare the prompt for AI analysis
-	var prompt string
-	prompt = fmt.Sprintf("Please analyze these progress notes and provide a concise summary of the day's work. Focus on:\n\n")
-	prompt += "1. Key achievements and progress made\n"
-	prompt += "2. Any challenges or issues encountered\n"
-	prompt += "3. Important decisions or changes\n\n"
-	prompt += "Progress Notes:\n\n"
-
-	for _, note := range targetNotes {
-		prompt += fmt.Sprintf("Title: %s\n", note.Title)
-		prompt += fmt.Sprintf("Description: %s\n", note.Description)
-		if len(note.Changes.FilesModified) > 0 {
-			prompt += "Files Modified:\n"
-			for _, file := range note.Changes.FilesModified {
-				prompt += fmt.Sprintf("- %s\n", file)
-			}
-		}
-		prompt += fmt.Sprintf("Risk Level: %s\n", note.Impact.RiskLevel)
-		prompt += "---\n"
-	}
+	// Sort notes by timestamp
+	sort.Slice(targetNotes, func(i, j int) bool {
+		return targetNotes[i].Timestamp.Before(targetNotes[j].Timestamp)
+	})
 
 	// Get OpenAI API key from environment
 	apiKey := os.Getenv("OPENAI_API_KEY")
@@ -104,31 +189,39 @@ func runSummary(cmd *cobra.Command, args []string) error {
 	// Create OpenAI client
 	client := openai.NewClient(apiKey)
 
-	// Generate summary using AI
-	resp, err := client.CreateChatCompletion(
-		cmd.Context(),
-		openai.ChatCompletionRequest{
-			Model: openai.GPT4,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleSystem,
-					Content: "You are a helpful assistant that summarizes project progress notes in a clear and concise manner.",
-				},
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: prompt,
-				},
-			},
-		},
-	)
+	// Process notes in batches
+	var batchSummaries []string
+	for i := 0; i < len(targetNotes); i += maxBatchSize {
+		end := i + maxBatchSize
+		if end > len(targetNotes) {
+			end = len(targetNotes)
+		}
+
+		fmt.Printf("Processing notes %d-%d of %d...\n", i+1, end, len(targetNotes))
+		summary, err := processBatch(client, targetNotes[i:end])
+		if err != nil {
+			return fmt.Errorf("failed to process batch: %w", err)
+		}
+		batchSummaries = append(batchSummaries, summary)
+
+		// Add delay between API calls
+		time.Sleep(apiCallDelay * time.Millisecond)
+	}
+
+	// Add delay before final summary
+	time.Sleep(apiCallDelay * time.Millisecond)
+
+	// Combine all summaries
+	fmt.Println("Generating final summary...")
+	finalSummary, err := combineSummaries(client, batchSummaries, targetDate)
 	if err != nil {
-		return fmt.Errorf("failed to generate summary: %v", err)
+		return fmt.Errorf("failed to generate final summary: %w", err)
 	}
 
 	// Print the summary
 	fmt.Printf("\nProgress Summary for %s - %s\n", projectName, targetDate.Format("2006-01-02"))
 	fmt.Println("------------------------")
-	fmt.Println(resp.Choices[0].Message.Content)
+	fmt.Println(finalSummary)
 
 	return nil
 }
