@@ -17,7 +17,7 @@ import (
 
 const (
 	// Maximum number of notes to process in a single batch
-	maxBatchSize = 2
+	maxBatchSize = 1
 	// Delay between API calls in milliseconds
 	apiCallDelay = 2000
 	// System prompt for the initial summarization

@@ -17,7 +17,7 @@ const (
 
 // Config holds the application configuration
 type Config struct {
-	OpenAIKey     string
+	OpenAIKey     string   `yaml:"openai_key"`
 	ProjectGoal   string   `yaml:"project_goal,omitempty"`
 	RememberNotes []string `yaml:"remember_notes,omitempty"`
 }
@@ -56,10 +56,6 @@ func LoadConfig() (*Config, error) {
 		openAIKey = viper.GetString("openai_key")
 	}
 
-	if openAIKey == "" {
-		return nil, fmt.Errorf("OpenAI API key not found. Please set OPENAI_API_KEY environment variable or add it to ~/.wash/wash.yaml")
-	}
-
 	// Get project goal and remember notes
 	projectGoal := viper.GetString("project_goal")
 	rememberNotes := viper.GetStringSlice("remember_notes")
@@ -73,16 +69,28 @@ func LoadConfig() (*Config, error) {
 
 // SaveConfig saves the configuration to file
 func SaveConfig(config *Config) error {
+	// Reset Viper configuration
+	viper.Reset()
+
+	// Set up Viper again
+	viper.SetConfigName("wash")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("$HOME/.wash")
+
+	// Set the values
 	viper.Set("openai_key", config.OpenAIKey)
 	viper.Set("project_goal", config.ProjectGoal)
 	viper.Set("remember_notes", config.RememberNotes)
 
+	// Get the config file path
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	configPath := filepath.Join(home, DefaultConfigName+"."+DefaultConfigType)
+	configPath := filepath.Join(home, ".wash", "wash.yaml")
+
+	// Write the config file
 	if err := viper.WriteConfigAs(configPath); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
