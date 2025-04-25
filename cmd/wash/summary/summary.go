@@ -16,55 +16,97 @@ import (
 )
 
 const (
-	// Maximum number of notes to process in a single batch
-	maxBatchSize = 1
-	// Delay between API calls in milliseconds
-	apiCallDelay = 2000
+	// Default values
+	defaultMaxBatchSize = 1
+	defaultAPICallDelay = 2000
+	defaultMaxRetries   = 3
+	defaultRetryDelay   = 1000
+
 	// System prompt for the initial summarization
-	batchSystemPrompt = `Summarize these progress notes concisely:
-1. Key activities/achievements
-2. Challenges/solutions
-3. Important decisions
-Be brief and factual.`
+	batchSystemPrompt = `Summarize these notes in 2-3 sentences max:
+1. Main activity/achievement
+2. Key challenge or decision
+Be extremely brief.`
 	// System prompt for combining summaries
-	combineSummaryPrompt = `Combine these summaries into a daily summary for %s.
-Focus on:
-1. Key achievements
-2. Challenges/resolutions
-3. Important decisions
-Be concise.`
+	combineSummaryPrompt = `Combine these summaries into a single paragraph for %s.
+Focus on the most important achievements and decisions.
+Be very concise.`
 )
 
+// Config holds the configuration for the summary command
+type Config struct {
+	MaxBatchSize int
+	APICallDelay int
+	MaxRetries   int
+	RetryDelay   int
+}
+
+// Command returns the summary command
 func Command() *cobra.Command {
+	var cfg Config
+
 	cmd := &cobra.Command{
 		Use:   "summary",
 		Short: "Show a summary of project progress",
 		RunE:  runSummary,
 	}
 
+	// Add flags for configuration
+	cmd.Flags().IntVar(&cfg.MaxBatchSize, "batch-size", defaultMaxBatchSize, "Maximum number of notes to process in a single batch")
+	cmd.Flags().IntVar(&cfg.APICallDelay, "api-delay", defaultAPICallDelay, "Delay between API calls in milliseconds")
+	cmd.Flags().IntVar(&cfg.MaxRetries, "max-retries", defaultMaxRetries, "Maximum number of retries for API calls")
+	cmd.Flags().IntVar(&cfg.RetryDelay, "retry-delay", defaultRetryDelay, "Delay between retries in milliseconds")
 	cmd.Flags().StringP("date", "d", "", "Date to show summary for (YYYY-MM-DD)")
 	cmd.Flags().StringP("project", "p", "", "Project name to show summary for")
 
 	return cmd
 }
 
+// processBatchWithRetry generates a summary for a batch of notes with retry logic
+func processBatchWithRetry(client *openai.Client, notes []*notes.ProjectProgressNote, cfg Config) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < cfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(cfg.RetryDelay) * time.Millisecond)
+		}
+
+		summary, err := processBatch(client, notes)
+		if err == nil {
+			return summary, nil
+		}
+		lastErr = err
+
+		// Check if error is retryable
+		if strings.Contains(err.Error(), "rate limit") ||
+			strings.Contains(err.Error(), "timeout") ||
+			strings.Contains(err.Error(), "connection") {
+			continue
+		}
+		// For non-retryable errors, return immediately
+		return "", err
+	}
+	return "", fmt.Errorf("failed after %d retries: %w", cfg.MaxRetries, lastErr)
+}
+
 // processBatch generates a summary for a batch of notes
 func processBatch(client *openai.Client, notes []*notes.ProjectProgressNote) (string, error) {
 	var prompt strings.Builder
-	prompt.WriteString("Summarize these notes:\n\n")
+	prompt.WriteString("Summarize these notes concisely:\n\n")
 
 	for _, note := range notes {
+		// Only include essential information
 		prompt.WriteString(fmt.Sprintf("%s: %s\n", note.Timestamp.Format("15:04"), note.Title))
-		prompt.WriteString(fmt.Sprintf("%s\n", note.Description))
+
+		// Truncate description if too long
+		desc := note.Description
+		if len(desc) > 200 {
+			desc = desc[:200] + "..."
+		}
+		prompt.WriteString(fmt.Sprintf("%s\n", desc))
+
+		// Only include file count if there are changes
 		if len(note.Changes.FilesModified) > 0 {
-			prompt.WriteString("Files: ")
-			for i, file := range note.Changes.FilesModified {
-				if i > 0 {
-					prompt.WriteString(", ")
-				}
-				prompt.WriteString(filepath.Base(file))
-			}
-			prompt.WriteString("\n")
+			prompt.WriteString(fmt.Sprintf("Files modified: %d\n", len(note.Changes.FilesModified)))
 		}
 		prompt.WriteString("---\n")
 	}
@@ -91,6 +133,32 @@ func processBatch(client *openai.Client, notes []*notes.ProjectProgressNote) (st
 	}
 
 	return resp.Choices[0].Message.Content, nil
+}
+
+// combineSummariesWithRetry combines multiple batch summaries into a final summary with retry logic
+func combineSummariesWithRetry(client *openai.Client, summaries []string, date time.Time, cfg Config) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < cfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(cfg.RetryDelay) * time.Millisecond)
+		}
+
+		summary, err := combineSummaries(client, summaries, date)
+		if err == nil {
+			return summary, nil
+		}
+		lastErr = err
+
+		// Check if error is retryable
+		if strings.Contains(err.Error(), "rate limit") ||
+			strings.Contains(err.Error(), "timeout") ||
+			strings.Contains(err.Error(), "connection") {
+			continue
+		}
+		// For non-retryable errors, return immediately
+		return "", err
+	}
+	return "", fmt.Errorf("failed after %d retries: %w", cfg.MaxRetries, lastErr)
 }
 
 // combineSummaries combines multiple batch summaries into a final summary
@@ -127,6 +195,42 @@ func combineSummaries(client *openai.Client, summaries []string, date time.Time)
 }
 
 func runSummary(cmd *cobra.Command, args []string) error {
+	// Get configuration from flags
+	cfg := Config{
+		MaxBatchSize: defaultMaxBatchSize,
+		APICallDelay: defaultAPICallDelay,
+		MaxRetries:   defaultMaxRetries,
+		RetryDelay:   defaultRetryDelay,
+	}
+
+	// Override defaults with flag values if provided
+	if cmd.Flags().Changed("batch-size") {
+		cfg.MaxBatchSize, _ = cmd.Flags().GetInt("batch-size")
+	}
+	if cmd.Flags().Changed("api-delay") {
+		cfg.APICallDelay, _ = cmd.Flags().GetInt("api-delay")
+	}
+	if cmd.Flags().Changed("max-retries") {
+		cfg.MaxRetries, _ = cmd.Flags().GetInt("max-retries")
+	}
+	if cmd.Flags().Changed("retry-delay") {
+		cfg.RetryDelay, _ = cmd.Flags().GetInt("retry-delay")
+	}
+
+	// Validate configuration
+	if cfg.MaxBatchSize < 1 {
+		return fmt.Errorf("batch size must be at least 1")
+	}
+	if cfg.APICallDelay < 0 {
+		return fmt.Errorf("API call delay cannot be negative")
+	}
+	if cfg.MaxRetries < 0 {
+		return fmt.Errorf("max retries cannot be negative")
+	}
+	if cfg.RetryDelay < 0 {
+		return fmt.Errorf("retry delay cannot be negative")
+	}
+
 	dateStr, _ := cmd.Flags().GetString("date")
 	projectName, _ := cmd.Flags().GetString("project")
 
@@ -134,7 +238,7 @@ func runSummary(cmd *cobra.Command, args []string) error {
 	if projectName == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return fmt.Errorf("failed to get current directory: %v", err)
+			return fmt.Errorf("failed to get current directory: %w", err)
 		}
 		projectName = filepath.Base(cwd)
 	}
@@ -144,7 +248,7 @@ func runSummary(cmd *cobra.Command, args []string) error {
 	if dateStr != "" {
 		targetDate, err = time.Parse("2006-01-02", dateStr)
 		if err != nil {
-			return fmt.Errorf("invalid date format: %v", err)
+			return fmt.Errorf("invalid date format: %w", err)
 		}
 	} else {
 		targetDate = time.Now()
@@ -153,11 +257,11 @@ func runSummary(cmd *cobra.Command, args []string) error {
 	// Get progress notes
 	notesManager, err := notes.NewNotesManager()
 	if err != nil {
-		return fmt.Errorf("failed to initialize notes manager: %v", err)
+		return fmt.Errorf("failed to initialize notes manager: %w", err)
 	}
 	progressNotes, err := notesManager.GetProgressNotes(projectName)
 	if err != nil {
-		return fmt.Errorf("failed to get progress notes: %v", err)
+		return fmt.Errorf("failed to get progress notes: %w", err)
 	}
 
 	// Filter notes for target date and sort by timestamp
@@ -191,29 +295,29 @@ func runSummary(cmd *cobra.Command, args []string) error {
 
 	// Process notes in batches
 	var batchSummaries []string
-	for i := 0; i < len(targetNotes); i += maxBatchSize {
-		end := i + maxBatchSize
+	for i := 0; i < len(targetNotes); i += cfg.MaxBatchSize {
+		end := i + cfg.MaxBatchSize
 		if end > len(targetNotes) {
 			end = len(targetNotes)
 		}
 
 		fmt.Printf("Processing notes %d-%d of %d...\n", i+1, end, len(targetNotes))
-		summary, err := processBatch(client, targetNotes[i:end])
+		summary, err := processBatchWithRetry(client, targetNotes[i:end], cfg)
 		if err != nil {
 			return fmt.Errorf("failed to process batch: %w", err)
 		}
 		batchSummaries = append(batchSummaries, summary)
 
 		// Add delay between API calls
-		time.Sleep(apiCallDelay * time.Millisecond)
+		time.Sleep(time.Duration(cfg.APICallDelay) * time.Millisecond)
 	}
 
 	// Add delay before final summary
-	time.Sleep(apiCallDelay * time.Millisecond)
+	time.Sleep(time.Duration(cfg.APICallDelay) * time.Millisecond)
 
 	// Combine all summaries
 	fmt.Println("Generating final summary...")
-	finalSummary, err := combineSummaries(client, batchSummaries, targetDate)
+	finalSummary, err := combineSummariesWithRetry(client, batchSummaries, targetDate, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to generate final summary: %w", err)
 	}
