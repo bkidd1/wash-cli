@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sashabaranov/go-openai"
 )
 
 // InteractionType represents different types of interactions
@@ -467,68 +469,90 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 		Title:       fmt.Sprintf("5-Minute Summary"),
 	}
 
-	// Track main activities and changes
-	var description strings.Builder
-	description.WriteString("Recent Activity:\n")
-
-	// Group interactions by type
-	typeCounts := make(map[string]int)
-	var mainActivities []string
-	var codeChanges []string
-
+	// Format monitor notes for API analysis
+	var monitorData strings.Builder
 	for _, note := range recentNotes {
-		// Extract key information from the interaction
-		userRequest := strings.Split(note.Interaction.UserRequest, "\n")[0]
-
-		// Categorize the interaction
-		if strings.Contains(strings.ToLower(userRequest), "code") ||
-			strings.Contains(strings.ToLower(userRequest), "implement") {
-			typeCounts["coding"]++
-			mainActivities = append(mainActivities, fmt.Sprintf("- %s", userRequest))
-		} else if strings.Contains(strings.ToLower(userRequest), "debug") ||
-			strings.Contains(strings.ToLower(userRequest), "fix") {
-			typeCounts["debugging"]++
-			mainActivities = append(mainActivities, fmt.Sprintf("- Debug: %s", userRequest))
-		} else if strings.Contains(strings.ToLower(userRequest), "refactor") ||
-			strings.Contains(strings.ToLower(userRequest), "improve") {
-			typeCounts["refactoring"]++
-			mainActivities = append(mainActivities, fmt.Sprintf("- Refactor: %s", userRequest))
-		}
-
-		// Track code changes
+		monitorData.WriteString(fmt.Sprintf("Time: %s\n", note.Timestamp.Format("2006-01-02 15:04:05")))
+		monitorData.WriteString(fmt.Sprintf("User Request: %s\n", note.Interaction.UserRequest))
+		monitorData.WriteString(fmt.Sprintf("AI Action: %s\n", note.Interaction.AIAction))
+		monitorData.WriteString(fmt.Sprintf("Context: %s\n", note.Interaction.Context))
 		if len(note.Interaction.CodeChanges) > 0 {
-			codeChanges = append(codeChanges, note.Interaction.CodeChanges...)
+			monitorData.WriteString(fmt.Sprintf("Code Changes: %s\n", strings.Join(note.Interaction.CodeChanges, ", ")))
 		}
+		monitorData.WriteString("\n")
 	}
 
-	// Write main activities (limit to 3 most recent)
-	if len(mainActivities) > 0 {
-		description.WriteString("\nMain Activities:\n")
-		for i, activity := range mainActivities {
-			if i >= 3 {
-				break
-			}
-			description.WriteString(fmt.Sprintf("%s\n", activity))
-		}
+	// Create API client
+	client := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
+
+	// Create the analysis prompt
+	prompt := `You are analyzing a series of development interactions between a user and an AI coding assistant.
+Your task is to analyze these interactions and provide a comprehensive summary and analysis.
+
+Monitor Notes:
+` + monitorData.String() + `
+
+Please analyze these interactions and provide:
+1. A concise paragraph summarizing the main development activities and progress
+2. Any potential errors or issues that were introduced or identified
+3. Suggestions for alternative, more optimized approaches to:
+   - Project structure and organization
+   - Features and functionality
+   - Build process and tools
+   - Code quality and maintainability
+4. A list of all files that were modified
+
+Format your response as a JSON object with the following structure:
+{
+    "summary": "paragraph summarizing main activities and progress",
+    "potential_issues": ["list of potential issues or errors"],
+    "optimization_suggestions": ["list of suggestions for better approaches"],
+    "files_changed": ["list of modified files"]
+}`
+
+	// Call the API
+	resp, err := client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt,
+				},
+			},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error getting analysis: %w", err)
 	}
 
-	// Write code changes (limit to 3 most recent)
-	if len(codeChanges) > 0 {
-		description.WriteString("\nCode Changes:\n")
-		for i, change := range codeChanges {
-			if i >= 3 {
-				break
-			}
-			description.WriteString(fmt.Sprintf("- %s\n", change))
-		}
+	// Parse the response
+	var analysis struct {
+		Summary                 string   `json:"summary"`
+		PotentialIssues         []string `json:"potential_issues"`
+		OptimizationSuggestions []string `json:"optimization_suggestions"`
+		FilesChanged            []string `json:"files_changed"`
+	}
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &analysis); err != nil {
+		return nil, fmt.Errorf("error parsing analysis: %w", err)
 	}
 
-	// Set the description
-	progressNote.Description = description.String()
+	// Update the progress note with the analysis
+	progressNote.Description = fmt.Sprintf("Summary:\n%s\n\nPotential Issues:\n%s\n\nOptimization Suggestions:\n%s\n\nFiles Changed:\n%s",
+		analysis.Summary,
+		strings.Join(analysis.PotentialIssues, "\n"),
+		strings.Join(analysis.OptimizationSuggestions, "\n"),
+		strings.Join(analysis.FilesChanged, "\n"),
+	)
 
 	// Set impact assessment
 	progressNote.Impact.Scope = "project-wide"
-	progressNote.Impact.RiskLevel = "low"
+	if len(analysis.PotentialIssues) > 0 {
+		progressNote.Impact.RiskLevel = "medium"
+	} else {
+		progressNote.Impact.RiskLevel = "low"
+	}
 
 	// Set metadata
 	progressNote.Metadata.Priority = PriorityLow
