@@ -27,6 +27,7 @@ const (
 		"   Issues related to user reminders\n\n" +
 		"2. Should Fix\n" +
 		"   Code maintainability issues\n" +
+		"   Possible artifacts of old code that is no longer needed\n" +
 		"   Common best practice violations\n" +
 		"   Performance issues\n" +
 		"   Potential future problems\n" +

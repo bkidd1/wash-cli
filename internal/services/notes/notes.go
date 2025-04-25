@@ -49,6 +49,14 @@ type Analysis struct {
 	AlternativeApproaches []string `json:"alternative_approaches,omitempty"`
 }
 
+// MonitorAnalysis represents the analysis of monitor notes
+type MonitorAnalysis struct {
+	Summary                 string   `json:"summary"`
+	PotentialIssues         []string `json:"potential_issues"`
+	OptimizationSuggestions []string `json:"optimization_suggestions"`
+	FilesChanged            []string `json:"files_changed"`
+}
+
 // Interaction represents a single interaction between user and AI
 type Interaction struct {
 	Timestamp   time.Time `json:"timestamp"`
@@ -111,28 +119,6 @@ type RememberNote struct {
 	Timestamp time.Time              `json:"timestamp"`
 	Content   string                 `json:"content"`
 	Metadata  map[string]interface{} `json:"metadata"`
-}
-
-// Manager handles note storage and retrieval
-type Manager struct {
-	// TODO: Add storage backend (e.g., database, file system)
-}
-
-// NewManager creates a new notes manager
-func NewManager() *Manager {
-	return &Manager{}
-}
-
-// Save stores a note
-func (m *Manager) Save(note *RememberNote) error {
-	// TODO: Implement actual storage
-	return nil
-}
-
-// Get retrieves notes matching the given criteria
-func (m *Manager) Get(filter map[string]interface{}) ([]*RememberNote, error) {
-	// TODO: Implement actual retrieval
-	return nil, nil
 }
 
 // NotesManager handles all Wash notes operations
@@ -528,12 +514,7 @@ Format your response as a JSON object with the following structure:
 	}
 
 	// Parse the response
-	var analysis struct {
-		Summary                 string   `json:"summary"`
-		PotentialIssues         []string `json:"potential_issues"`
-		OptimizationSuggestions []string `json:"optimization_suggestions"`
-		FilesChanged            []string `json:"files_changed"`
-	}
+	var analysis MonitorAnalysis
 	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &analysis); err != nil {
 		return nil, fmt.Errorf("error parsing analysis: %w", err)
 	}
