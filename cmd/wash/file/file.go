@@ -1,10 +1,12 @@
 package file
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/analyzer"
@@ -73,7 +75,46 @@ Examples:
 				if selectedFile := os.Getenv("WASH_SELECTED_FILE"); selectedFile != "" {
 					path = selectedFile
 				} else {
-					return fmt.Errorf("no file path provided and no file is currently open in the editor")
+					// Try to get the currently open file from common editor environment variables
+					for _, envVar := range []string{"VSCODE_PID", "VSCODE_CWD", "VSCODE_IPC_HOOK", "VSCODE_NLS_CONFIG"} {
+						if os.Getenv(envVar) != "" {
+							// VS Code is running, try to get the active file
+							if activeFile := os.Getenv("VSCODE_ACTIVE_FILE"); activeFile != "" {
+								path = activeFile
+								break
+							}
+						}
+					}
+
+					// If still no file found, try to get the active file from other editors
+					if path == "." {
+						for _, envVar := range []string{"EDITOR", "VISUAL"} {
+							if editor := os.Getenv(envVar); editor != "" {
+								// Check if it's a common editor that supports getting active file
+								if strings.Contains(strings.ToLower(editor), "code") ||
+									strings.Contains(strings.ToLower(editor), "vscode") {
+									if activeFile := os.Getenv("VSCODE_ACTIVE_FILE"); activeFile != "" {
+										path = activeFile
+										break
+									}
+								}
+							}
+						}
+					}
+
+					// If no file was found, prompt the user for a file path
+					if path == "." {
+						fmt.Print("Enter file path: ")
+						reader := bufio.NewReader(os.Stdin)
+						input, err := reader.ReadString('\n')
+						if err != nil {
+							return fmt.Errorf("failed to read input: %w", err)
+						}
+						path = strings.TrimSpace(input)
+						if path == "" {
+							return fmt.Errorf("file path cannot be empty")
+						}
+					}
 				}
 			}
 
