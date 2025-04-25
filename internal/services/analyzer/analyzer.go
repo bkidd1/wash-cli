@@ -83,6 +83,10 @@ func (a *TerminalAnalyzer) UpdateProjectContext(projectGoal string) {
 func (a *TerminalAnalyzer) getContextualPrompt() string {
 	var context strings.Builder
 
+	// Add the system prompt
+	context.WriteString(terminalSystemPrompt)
+	context.WriteString("\n\n")
+
 	// Add recent monitor notes if available
 	if a.notesManager != nil {
 		// Get the current working directory name as project name
