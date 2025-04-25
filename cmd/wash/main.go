@@ -5,50 +5,39 @@ import (
 	"os"
 
 	"github.com/bkidd1/wash-cli/cmd/wash/bug"
+	"github.com/bkidd1/wash-cli/cmd/wash/config"
 	"github.com/bkidd1/wash-cli/cmd/wash/file"
 	"github.com/bkidd1/wash-cli/cmd/wash/monitor"
 	"github.com/bkidd1/wash-cli/cmd/wash/project"
 	"github.com/bkidd1/wash-cli/cmd/wash/remember"
 	"github.com/bkidd1/wash-cli/cmd/wash/summary"
 	versioncmd "github.com/bkidd1/wash-cli/cmd/wash/version"
-	"github.com/bkidd1/wash-cli/pkg/version"
 	"github.com/spf13/cobra"
 )
 
 //go:generate go build -o ../../wash
 
-func main() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
 var rootCmd = &cobra.Command{
 	Use:   "wash",
 	Short: "Wash CLI - Your AI-powered development assistant",
 	Long: `Wash CLI is an AI-powered development assistant that helps you:
-- Monitor your development workflow
-- Track project progress
-- Remember important details
-- Analyze code and suggest improvements
-- Generate summaries and documentation
-- Debug and fix issues
-
-For more information about a specific command, use 'wash [command] --help'`,
-	Version: version.String(),
+- Analyze code and bugs
+- Monitor your project
+- Provide intelligent suggestions
+- Remember important context`,
 }
 
 func init() {
 	// Add commands
-	rootCmd.AddCommand(project.Command())
 	rootCmd.AddCommand(file.Command())
+	rootCmd.AddCommand(bug.Command())
+	rootCmd.AddCommand(monitor.Command())
+	rootCmd.AddCommand(config.Command())
+	rootCmd.AddCommand(project.Command())
 	rootCmd.AddCommand(
-		monitor.Command(),
 		remember.Command(),
 		summary.Command(),
 	)
-	rootCmd.AddCommand(bug.Command())
 	rootCmd.AddCommand(versioncmd.Command())
 
 	// Hide the default completion command
@@ -88,4 +77,11 @@ Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
 
 Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
 `)
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }

@@ -463,105 +463,63 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 		Timestamp:   time.Now(),
 		ID:          uuid.New().String(),
 		ProjectName: projectName,
-		Type:        "critical_analysis",
-		Title:       fmt.Sprintf("Critical Analysis - Last %v", duration),
+		Type:        "summary",
+		Title:       fmt.Sprintf("5-Minute Summary"),
 	}
 
-	// Track patterns and potential issues
+	// Track main activities and changes
 	var description strings.Builder
-	description.WriteString("Activity Summary:\n")
-	description.WriteString("----------------\n")
+	description.WriteString("Recent Activity:\n")
 
-	// Group interactions by type and count
+	// Group interactions by type
 	typeCounts := make(map[string]int)
-	var codingTasks, debuggingTasks, refactoringTasks, toolSelectionTasks []string
-	var potentialMistakes []string
-	var alternativeApproaches []string
+	var mainActivities []string
+	var codeChanges []string
 
 	for _, note := range recentNotes {
 		// Extract key information from the interaction
-		userRequest := strings.Split(note.Interaction.UserRequest, "\n")[0] // Take first line only
-		aiAction := strings.Split(note.Interaction.AIAction, "\n")[0]       // Take first line only
+		userRequest := strings.Split(note.Interaction.UserRequest, "\n")[0]
 
 		// Categorize the interaction
-		interaction := fmt.Sprintf("%s → %s", userRequest, aiAction)
-
-		// Count interaction types
 		if strings.Contains(strings.ToLower(userRequest), "code") ||
 			strings.Contains(strings.ToLower(userRequest), "implement") {
 			typeCounts["coding"]++
-			codingTasks = append(codingTasks, interaction)
+			mainActivities = append(mainActivities, fmt.Sprintf("- %s", userRequest))
 		} else if strings.Contains(strings.ToLower(userRequest), "debug") ||
 			strings.Contains(strings.ToLower(userRequest), "fix") {
 			typeCounts["debugging"]++
-			debuggingTasks = append(debuggingTasks, interaction)
+			mainActivities = append(mainActivities, fmt.Sprintf("- Debug: %s", userRequest))
 		} else if strings.Contains(strings.ToLower(userRequest), "refactor") ||
 			strings.Contains(strings.ToLower(userRequest), "improve") {
 			typeCounts["refactoring"]++
-			refactoringTasks = append(refactoringTasks, interaction)
-		} else if strings.Contains(strings.ToLower(userRequest), "tool") ||
-			strings.Contains(strings.ToLower(userRequest), "library") {
-			typeCounts["tool_selection"]++
-			toolSelectionTasks = append(toolSelectionTasks, interaction)
+			mainActivities = append(mainActivities, fmt.Sprintf("- Refactor: %s", userRequest))
 		}
 
-		// Track potential issues
-		if strings.Contains(strings.ToLower(aiAction), "error") ||
-			strings.Contains(strings.ToLower(aiAction), "bug") ||
-			strings.Contains(strings.ToLower(aiAction), "fix") {
-			potentialMistakes = append(potentialMistakes, interaction)
-		}
-
-		// Track alternative approaches
-		if strings.Contains(strings.ToLower(aiAction), "using") ||
-			strings.Contains(strings.ToLower(aiAction), "approach") {
-			alternativeApproaches = append(alternativeApproaches, interaction)
+		// Track code changes
+		if len(note.Interaction.CodeChanges) > 0 {
+			codeChanges = append(codeChanges, note.Interaction.CodeChanges...)
 		}
 	}
 
-	// Write activity summary with counts
-	description.WriteString("\nRecent Activities:\n")
-	for taskType, count := range typeCounts {
-		description.WriteString(fmt.Sprintf("- %s: %d interactions\n", taskType, count))
-	}
-
-	// Write key interactions (limit to 2 per category)
-	writeCategory := func(category string, items []string) {
-		if len(items) > 0 {
-			description.WriteString(fmt.Sprintf("\n%s:\n", category))
-			for i, item := range items {
-				if i >= 2 {
-					break
-				}
-				description.WriteString(fmt.Sprintf("- %s\n", item))
-			}
-		}
-	}
-
-	writeCategory("Coding Tasks", codingTasks)
-	writeCategory("Debugging Tasks", debuggingTasks)
-	writeCategory("Refactoring Tasks", refactoringTasks)
-	writeCategory("Tool Selection Tasks", toolSelectionTasks)
-
-	// Write potential issues (limit to 2)
-	if len(potentialMistakes) > 0 {
-		description.WriteString("\nPotential Issues:\n")
-		for i, mistake := range potentialMistakes {
-			if i >= 2 {
+	// Write main activities (limit to 3 most recent)
+	if len(mainActivities) > 0 {
+		description.WriteString("\nMain Activities:\n")
+		for i, activity := range mainActivities {
+			if i >= 3 {
 				break
 			}
-			description.WriteString(fmt.Sprintf("- %s\n", mistake))
+			description.WriteString(fmt.Sprintf("%s\n", activity))
 		}
 	}
 
-	// Write alternative approaches (limit to 2)
-	if len(alternativeApproaches) > 0 {
-		description.WriteString("\nAlternative Approaches:\n")
-		for i, approach := range alternativeApproaches {
-			if i >= 2 {
+	// Write code changes (limit to 3 most recent)
+	if len(codeChanges) > 0 {
+		description.WriteString("\nCode Changes:\n")
+		for i, change := range codeChanges {
+			if i >= 3 {
 				break
 			}
-			description.WriteString(fmt.Sprintf("- %s\n", approach))
+			description.WriteString(fmt.Sprintf("- %s\n", change))
 		}
 	}
 
@@ -570,16 +528,12 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 
 	// Set impact assessment
 	progressNote.Impact.Scope = "project-wide"
-	if len(potentialMistakes) > 0 {
-		progressNote.Impact.RiskLevel = "medium"
-	} else {
-		progressNote.Impact.RiskLevel = "low"
-	}
+	progressNote.Impact.RiskLevel = "low"
 
 	// Set metadata
-	progressNote.Metadata.Priority = PriorityMedium
+	progressNote.Metadata.Priority = PriorityLow
 	progressNote.Metadata.Status = StatusOpen
-	progressNote.Metadata.Tags = []string{"critical_analysis", "auto_generated"}
+	progressNote.Metadata.Tags = []string{"summary", "auto_generated"}
 
 	return progressNote, nil
 }
