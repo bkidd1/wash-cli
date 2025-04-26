@@ -21,7 +21,7 @@ builds:
     main: ./cmd/wash/main.go
     binary: wash
     ldflags:
-      - -s -w -trimpath -X github.com/bkidd1/wash-cli/pkg/version.Version={{.Version}}
+      - -s -w -X github.com/bkidd1/wash-cli/pkg/version.Version={{.Version}}
       - -X github.com/bkidd1/wash-cli/pkg/version.BuildDate={{.Date}}
       - -X github.com/bkidd1/wash-cli/pkg/version.GitCommit={{.Commit}}
 
