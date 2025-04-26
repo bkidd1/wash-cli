@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/notes"
+	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/sashabaranov/go-openai"
 
 	"github.com/spf13/cobra"
@@ -24,11 +25,12 @@ const (
 
 	// System prompt for the initial summarization
 	batchSystemPrompt = `Summarize these notes in 2-3 sentences max:
-1. Main activity/achievement
-2. Key challenge or decision
+1. Main activities/Key Decisions.
+2. Possible errors/mistakes - non-optimal decisions.
+3. Potential alternative approaches to the errors/mistakes you identified.
 Be extremely brief.`
 	// System prompt for combining summaries
-	combineSummaryPrompt = `Combine these summaries into a single paragraph for %s.
+	combineSummaryPrompt = `Combine these summaries into a three paragraphs for %s.
 Focus on the most important achievements and decisions.
 Be very concise.`
 )
@@ -284,14 +286,14 @@ func runSummary(cmd *cobra.Command, args []string) error {
 		return targetNotes[i].Timestamp.Before(targetNotes[j].Timestamp)
 	})
 
-	// Get OpenAI API key from environment
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("OPENAI_API_KEY environment variable not set")
+	// Load config to get API key
+	config, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Create OpenAI client
-	client := openai.NewClient(apiKey)
+	// Create OpenAI client with config key
+	client := openai.NewClient(config.OpenAIKey)
 
 	// Process notes in batches
 	var batchSummaries []string

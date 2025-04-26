@@ -97,3 +97,20 @@ func SaveConfig(config *Config) error {
 
 	return nil
 }
+
+// ValidateAPIKey checks if the API key is set and valid
+func ValidateAPIKey() (bool, error) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return false, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Check if API key is set
+	if cfg.OpenAIKey == "" {
+		return false, nil
+	}
+
+	// TODO: Add actual API key validation by making a test call to OpenAI
+	// For now, we'll just check if it's not empty
+	return true, nil
+}
