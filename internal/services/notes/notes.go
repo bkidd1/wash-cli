@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
 )
@@ -468,8 +469,14 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 		monitorData.WriteString("\n")
 	}
 
-	// Create API client
-	client := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
+	// Load config to get API key
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Create API client with config key
+	client := openai.NewClient(cfg.OpenAIKey)
 
 	// Create the analysis prompt
 	prompt := `You are analyzing a series of development interactions between a user and an AI coding assistant.
