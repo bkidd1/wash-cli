@@ -225,7 +225,7 @@ func (m *Monitor) analyzeScreenshot() error {
 
 	// Create the analysis prompt with context
 	prompt := `You are observing a conversation between a user and an AI coding assistant in the Cursor IDE.
-Your task is to analyze the screenshot and provide a detailed summary of the interaction.
+Your task is to analyze the screenshot and provide a concise summary of the interaction.
 
 Based on the screenshot, please analyze:
 1. The user's request or question (what they're trying to accomplish)
@@ -233,12 +233,15 @@ Based on the screenshot, please analyze:
 3. Any code changes or modifications being discussed
 4. The overall context of the interaction (e.g., debugging, feature implementation)
 
+IMPORTANT: Keep all descriptions brief and to the point. Each field should be 1 sentence maximum.
+Focus on the key points and avoid unnecessary details.
+
 Format your response as a JSON object with the following structure:
 {
-    "user_request": "detailed description of what the user is asking and trying to accomplish",
-    "ai_action": "detailed description of the AI's response and actions",
-    "context": "overall context of the interaction (e.g., debugging, feature implementation)",
-    "code_changes": ["code changes or modifications occuring or being discussed"]
+    "user_request": "brief description of the user goal expressed in the chat in the lower right corner of the screenshot",
+    "ai_action": "brief description of the AI's main action - or the user's action if they edit the code directly.",
+    "context": "brief context (e.g., debugging, feature implementation)",
+    "code_changes": ["which file(s) were edited, if any"]
 }` + "\n\n" + contextStr
 
 	// Add retry logic for transient network errors

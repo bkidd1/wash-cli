@@ -139,16 +139,7 @@ Examples:
 ## Description
 %s
 
-## Analysis
-%s
-
-## Potential Causes
-%s
-
 ## Suggested Solutions
-%s
-
-## Related Context
 %s
 
 ## Priority
@@ -161,10 +152,7 @@ Open
 `,
 				time.Now().Format("2006-01-02 15:04:05"),
 				description,
-				analysis.Analysis,
-				analysis.PotentialCauses,
 				analysis.SuggestedSolutions,
-				analysis.RelatedContext,
 				priority,
 			)
 
@@ -176,8 +164,6 @@ Open
 			// Print analysis to console
 			fmt.Println("\nBug Analysis Results:")
 			fmt.Println("-------------------")
-			fmt.Printf("\nAnalysis:\n%s\n", analysis.Analysis)
-			fmt.Printf("\nPotential Causes:\n%s\n", analysis.PotentialCauses)
 			fmt.Printf("\nSuggested Solutions:\n%s\n", analysis.SuggestedSolutions)
 			fmt.Printf("\nBug report saved to: %s\n", bugFile)
 
