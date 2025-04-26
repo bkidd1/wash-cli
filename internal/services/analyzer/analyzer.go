@@ -16,7 +16,6 @@ import (
 const (
 	terminalSystemPrompt = "You are an expert software architect and intermediary between a human developer and their AI coding agent. Your role is to analyze their code and interactions to identify potential issues and improvements. Especially issues that may have been caused by human error/bias misguiding the AI via poor prompts/communication.\n\n" +
 		"CRITICAL: The reminders are the highest priority context. They usually indicate how an issue was succesfully solved in the past - or how the user prefers to solve issues. AS LONG AS THEY ARE RELEVENT TO THE ISSUE AT HAND, you should consider them first.\n\n" +
-		"The wash notes also provide additional context about recent work and decisions. Use these to inform your analysis as well if relevant to the issue at hand.\n\n" +
 		"Focus your analysis on three priority levels:\n\n" +
 		"1. Critical! Must Fix\n" +
 		"   Security vulnerabilities\n" +
@@ -39,9 +38,9 @@ const (
 		"   Minor refactoring opportunities\n\n" +
 		"Limit yourself to one \"Could Fix\" per response.\n\n" +
 		"Start each response with 'You can copy this analysis into your chat window!'\n\n" +
-		"For each issue identified, provide a concise and clear description of the problem.\n\n" +
-		"It may also be the case that the code is currently optimal and changing things would be unneeded. If no issues are found at a particular priority level, say \"No issues found\". Don't print any response for subcriteria if you find no issue.\n\n" +
-		"DO NOT include any introductory text, summaries, conclusions or direct references to the provided context. Start directly with the priority levels and their issues."
+		"For each issue identified, provide a concise and clear description of the problem. Phrase responses in the form of a question.\n\n" +
+		"Sometimes the code will already be optimal. Remember that changing things always risks being unneeded and potentially harmful/overly complex. You must decide which issues are actually issues and which are not. If no issues are found at a particular priority level, say \"No issues found\". Don't print any response for subcriteria if you find no issue.\n\n" +
+		"DO NOT include any introductory text, summaries, or conclusions. Start directly with the priority levels and their issues."
 )
 
 // TerminalAnalyzer represents a code analyzer that returns formatted terminal output
@@ -179,54 +178,131 @@ func (a *TerminalAnalyzer) AnalyzeFile(ctx context.Context, filePath string) (st
 
 // AnalyzeProjectStructure analyzes the project structure and returns formatted terminal output
 func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, dirPath string) (string, error) {
-	var fileList strings.Builder
+	// First, collect all files and directories
+	type FileInfo struct {
+		Path  string
+		IsDir bool
+	}
+	var files []FileInfo
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
-			// Skip common directories
-			if info.Name() == "node_modules" || info.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			fileList.WriteString(fmt.Sprintf("📁 %s\n", path))
-		} else {
-			relPath, _ := filepath.Rel(dirPath, path)
-			fileList.WriteString(fmt.Sprintf("  📄 %s\n", relPath))
+		// Skip common directories
+		if info.IsDir() && (info.Name() == "node_modules" || info.Name() == ".git" || info.Name() == "vendor") {
+			return filepath.SkipDir
 		}
+		files = append(files, FileInfo{
+			Path:  path,
+			IsDir: info.IsDir(),
+		})
 		return nil
 	})
 	if err != nil {
 		return "", fmt.Errorf("error walking directory: %w", err)
 	}
 
-	resp, err := a.client.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: openai.GPT4,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleSystem,
-					Content: a.getContextualPrompt() + "\n\nFocus on project structure, organization, and architecture. Format your response EXACTLY as follows:\n\n1. Critical! Must Fix\n[list critical issues here]\n\n2. Should Fix\n[list should fix issues here]\n\n3. Could Fix\n[list could fix issues here]\n\nDo not include any other sections or text.",
-				},
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: fmt.Sprintf("Project Structure:\n%s\n\nAnalyze this project structure and identify issues at each priority level.", fileList.String()),
-				},
-			},
-		},
-	)
-	if err != nil {
-		return "", fmt.Errorf("error getting analysis: %w", err)
+	// Chunk the files into smaller groups
+	const maxFilesPerChunk = 50
+	var chunks [][]FileInfo
+	for i := 0; i < len(files); i += maxFilesPerChunk {
+		end := i + maxFilesPerChunk
+		if end > len(files) {
+			end = len(files)
+		}
+		chunks = append(chunks, files[i:end])
 	}
 
-	// Format the response with priority levels
-	analysis := fmt.Sprintf(`# Project Structure Analysis
-*Generated on %s*
+	// Analyze each chunk
+	var allIssues struct {
+		Critical  []string
+		ShouldFix []string
+		CouldFix  []string
+	}
 
-%s`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
+	for _, chunk := range chunks {
+		var fileList strings.Builder
+		for _, file := range chunk {
+			if file.IsDir {
+				fileList.WriteString(fmt.Sprintf("📁 %s\n", file.Path))
+			} else {
+				relPath, _ := filepath.Rel(dirPath, file.Path)
+				fileList.WriteString(fmt.Sprintf("  📄 %s\n", relPath))
+			}
+		}
 
-	return analysis, nil
+		resp, err := a.client.CreateChatCompletion(
+			ctx,
+			openai.ChatCompletionRequest{
+				Model: openai.GPT4,
+				Messages: []openai.ChatCompletionMessage{
+					{
+						Role:    openai.ChatMessageRoleSystem,
+						Content: a.getContextualPrompt() + "\n\nFocus on project structure, organization, and architecture. Format your response EXACTLY as follows:\n\n1. Critical! Must Fix\n[list critical issues here]\n\n2. Should Fix\n[list should fix issues here]\n\n3. Could Fix\n[list could fix issues here]\n\nDo not include any other sections or text.",
+					},
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: fmt.Sprintf("Project Structure (partial view):\n%s\n\nAnalyze this project structure and identify issues at each priority level.", fileList.String()),
+					},
+				},
+			},
+		)
+		if err != nil {
+			return "", fmt.Errorf("error getting analysis: %w", err)
+		}
+
+		// Parse the response and collect issues
+		content := resp.Choices[0].Message.Content
+		lines := strings.Split(content, "\n")
+		currentSection := ""
+		for _, line := range lines {
+			if strings.HasPrefix(line, "1. Critical! Must Fix") {
+				currentSection = "critical"
+			} else if strings.HasPrefix(line, "2. Should Fix") {
+				currentSection = "should"
+			} else if strings.HasPrefix(line, "3. Could Fix") {
+				currentSection = "could"
+			} else if line != "" && currentSection != "" {
+				switch currentSection {
+				case "critical":
+					allIssues.Critical = append(allIssues.Critical, strings.TrimSpace(line))
+				case "should":
+					allIssues.ShouldFix = append(allIssues.ShouldFix, strings.TrimSpace(line))
+				case "could":
+					allIssues.CouldFix = append(allIssues.CouldFix, strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+
+	// Format the final response
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("# Project Structure Analysis\n*Generated on %s*\n\n", time.Now().Format(time.RFC3339)))
+
+	if len(allIssues.Critical) > 0 {
+		result.WriteString("1. Critical! Must Fix\n")
+		for _, issue := range allIssues.Critical {
+			result.WriteString(fmt.Sprintf("- %s\n", issue))
+		}
+		result.WriteString("\n")
+	}
+
+	if len(allIssues.ShouldFix) > 0 {
+		result.WriteString("2. Should Fix\n")
+		for _, issue := range allIssues.ShouldFix {
+			result.WriteString(fmt.Sprintf("- %s\n", issue))
+		}
+		result.WriteString("\n")
+	}
+
+	if len(allIssues.CouldFix) > 0 {
+		result.WriteString("3. Could Fix\n")
+		for _, issue := range allIssues.CouldFix {
+			result.WriteString(fmt.Sprintf("- %s\n", issue))
+		}
+	}
+
+	return result.String(), nil
 }
 
 // AnalyzeChat analyzes chat history and returns formatted terminal output
