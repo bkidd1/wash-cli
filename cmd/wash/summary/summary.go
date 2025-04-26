@@ -25,9 +25,9 @@ const (
 
 	// System prompt for the initial summarization
 	batchSystemPrompt = `Summarize these notes in 2-3 sentences max:
-1. Main activities/Key Decisions.
-2. Possible errors/mistakes - non-optimal decisions.
-3. Potential alternative approaches to the errors/mistakes you identified.
+1. Main activities, key decisions, general progress.
+2. Possible errors/mistakes - non-optimal decisions made in the chat.
+3. Potential alternative approaches to the errors/mistakes.
 Be extremely brief.`
 	// System prompt for combining summaries
 	combineSummaryPrompt = `Combine these summaries into a three paragraphs for %s.
