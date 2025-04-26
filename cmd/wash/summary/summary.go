@@ -33,7 +33,7 @@ Be extremely brief.`
 	combineSummaryPrompt = `Combine these summaries into a three paragraph summary for %s.
 Structure your summary like this:
 1. Descriptive summary of specific activities, key decisions, general progress.
-2. The errors/mistakes - non-optimal decisions made in the chat (if any).
+2. List the errors/mistakes - all non-optimal decisions made in the chat or in the codebase(if any).
 3. Alternative approaches to the errors/mistakes (if any).
 In addition to the paragraphs, include a list of files modified (if specificallydocumented in the notes)
 Be concise and specific.`
