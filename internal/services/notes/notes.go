@@ -480,15 +480,18 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 
 	// Create the analysis prompt
 	prompt := `You are analyzing a series of development interactions between a user and an AI coding assistant.
-Your task is to analyze these interactions and provide a comprehensive summary and analysis.
+Your task is to analyze these interactions and provide a comprehensive summary and analysis. 
+The user wants to know if they made any poor suggestions in the chat/misguided AI actions. It's your job to identify these miscommunications.
+Also look out for any AI actions that seemed to take a sub-optimal approach for the user's overall goal.
 
 Monitor Notes:
 ` + monitorData.String() + `
 
 Please analyze these interactions and provide:
 1. A concise paragraph summarizing the main development activities and progress
-2. Potential errors or issues that were introduced through poor user prompts in the chat/misguided AI actions
+2. Potential errors or issues that were introduced through bad prompts in the chat/misguided AI actions
 3. Suggestions for alternative, more optimized approaches to:
+   - Errors caused by bad prompts in the chat/miscommunications
    - Project structure and organization
    - Features and functionality
    - Build process and tools
