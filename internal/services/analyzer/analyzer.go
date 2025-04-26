@@ -38,6 +38,7 @@ const (
 		"   Documentation improvements\n" +
 		"   Minor refactoring opportunities\n\n" +
 		"Limit yourself to one \"Could Fix\" per response.\n\n" +
+		"Start each response with 'You can copy this analysis into your chat window!'\n\n" +
 		"For each issue identified, provide a concise and clear description of the problem.\n\n" +
 		"It may also be the case that the code is currently optimal and changing things would be unneeded. If no issues are found at a particular priority level, say \"No issues found\". Don't print any response for subcriteria if you find no issue.\n\n" +
 		"DO NOT include any introductory text, summaries, conclusions or direct references to the provided context. Start directly with the priority levels and their issues."
