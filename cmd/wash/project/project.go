@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bkidd1/wash-cli/internal/services/analyzer"
@@ -104,6 +105,39 @@ Examples:
 			// Wash project structure
 			result, err := analyzer.AnalyzeProjectStructure(context.Background(), absPath)
 			if err != nil {
+				// Check if error is token limit related
+				if strings.Contains(err.Error(), "token") || strings.Contains(err.Error(), "length") {
+					done <- true
+					fmt.Println("\n⚠️  Project is too large for complete analysis.")
+					fmt.Println("Please specify a subdirectory to analyze (e.g., 'cmd', 'internal', 'pkg'):")
+
+					var subdir string
+					fmt.Scanln(&subdir)
+
+					// Validate the subdirectory exists
+					subdirPath := filepath.Join(absPath, subdir)
+					if _, err := os.Stat(subdirPath); os.IsNotExist(err) {
+						return fmt.Errorf("subdirectory does not exist: %s", subdir)
+					}
+
+					// Create a new channel for the subdirectory analysis
+					done = make(chan bool)
+					go loadingAnimation(done)
+
+					// Analyze the subdirectory
+					result, err = analyzer.AnalyzeProjectStructure(context.Background(), subdirPath)
+					if err != nil {
+						done <- true
+						return fmt.Errorf("failed to analyze subdirectory: %w", err)
+					}
+
+					done <- true
+					fmt.Printf("\nAnalysis Results for %s directory:\n", subdir)
+					fmt.Println("-------------------------------")
+					fmt.Println(result)
+					return nil
+				}
+
 				done <- true
 				return fmt.Errorf("failed to analyze project: %w", err)
 			}
