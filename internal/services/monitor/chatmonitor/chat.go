@@ -228,9 +228,9 @@ func (m *Monitor) analyzeScreenshot() error {
 Your task is to analyze the screenshot and provide a concise summary of the interaction.
 
 Based on the screenshot, please analyze:
-1. The user's request or question (what they're trying to accomplish)
-2. The AI assistant's response and actions
-3. Any code changes or modifications being discussed
+1. The user's request or question. Consider what they're trying to accomplish (this will most likely be in the bottom right corner of the screenshot where the user input for the chat is)
+2. The AI assistant's response and actions (the response willusually be above the user input on the right side of the screenshot)
+3. Code changes or modifications that seem to occur
 4. The overall context of the interaction (e.g., debugging, feature implementation)
 
 IMPORTANT: Keep all descriptions brief and to the point. Each field should be 1 sentence maximum.
