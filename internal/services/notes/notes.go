@@ -453,7 +453,7 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 		ID:          uuid.New().String(),
 		ProjectName: projectName,
 		Type:        "summary",
-		Title:       fmt.Sprintf("5-Minute Summary"),
+		Title:       fmt.Sprintf("%s Summary", duration.String()),
 	}
 
 	// Format monitor notes for API analysis
@@ -488,7 +488,7 @@ Your task is to generate a concise progress note that will be useful for future 
    - What issues were identified or resolved?
 
 2. Mistakes and Errors
-   - What sub-optimal approaches were suggested/taken by the user or AI?
+   - What sub-optimal approaches were suggested/taken by the user or AI (especially point out issues they didn't seem to notice or adress)?
    - What misunderstandings or miscommunications may have occurred between the user and AI?
    - Were there any overly complex or unnecessary approaches taken?
 
@@ -553,6 +553,11 @@ Format your response as a JSON object with the following structure:
 	progressNote.Metadata.Priority = PriorityLow
 	progressNote.Metadata.Status = StatusOpen
 	progressNote.Metadata.Tags = []string{"summary", "auto_generated"}
+
+	// Save the progress note
+	if err := nm.SaveProjectProgress(progressNote); err != nil {
+		return nil, fmt.Errorf("error saving progress note: %w", err)
+	}
 
 	return progressNote, nil
 }

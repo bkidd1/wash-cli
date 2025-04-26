@@ -257,7 +257,7 @@ func (a *TerminalAnalyzer) AnalyzeChat(ctx context.Context, chatHistory string) 
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: a.getContextualPrompt() + "\n\nAs an expert project manager, analyze the interaction patterns and communication effectiveness between the developer and AI. Focus on identifying potential misunderstandings, missed requirements, or areas where better communication could improve the development process.",
+					Content: a.getContextualPrompt() + "\n\nAs an expert project manager, analyze the interaction patterns and communication effectiveness between the developer and AI. Focus on identifying potential misunderstandings, missed requirements, or sub-optimal decisions made by the user or AI.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
