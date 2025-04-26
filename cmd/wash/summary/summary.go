@@ -30,9 +30,13 @@ const (
 3. Potential alternative approaches to the errors/mistakes.
 Be extremely brief.`
 	// System prompt for combining summaries
-	combineSummaryPrompt = `Combine these summaries into a three paragraphs for %s.
-Focus on the most important achievements and decisions.
-Be very concise.`
+	combineSummaryPrompt = `Combine these summaries into a three paragraph summary for %s.
+Structure your summary like this:
+1. Descriptive summary of specific activities, key decisions, general progress.
+2. The errors/mistakes - non-optimal decisions made in the chat (if any).
+3. Alternative approaches to the errors/mistakes (if any).
+In addition to the paragraphs, include a list of files modified (if specificallydocumented in the notes)
+Be concise and specific.`
 )
 
 // Config holds the configuration for the summary command
