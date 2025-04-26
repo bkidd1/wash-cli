@@ -113,44 +113,31 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 				os.Exit(0)
 			}
 
-			// Create and execute the set-key command
-			setKeyCmd := &cobra.Command{
-				Use:   "set-key",
-				Short: "Set your OpenAI API key",
-				RunE: func(cmd *cobra.Command, args []string) error {
-					fmt.Print("Enter your OpenAI API key: ")
-					reader := bufio.NewReader(os.Stdin)
-					apiKey, err := reader.ReadString('\n')
-					if err != nil {
-						return fmt.Errorf("failed to read input: %w", err)
-					}
-					apiKey = strings.TrimSpace(apiKey)
+			// Prompt for API key
+			fmt.Print("Enter your OpenAI API key: ")
+			apiKey, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read input: %w", err)
+			}
+			apiKey = strings.TrimSpace(apiKey)
 
-					// Validate API key
-					if apiKey == "" {
-						return fmt.Errorf("API key cannot be empty")
-					}
-
-					// Load current config
-					cfg, err := config.LoadConfig()
-					if err != nil {
-						return fmt.Errorf("failed to load config: %w", err)
-					}
-
-					// Update API key
-					cfg.OpenAIKey = apiKey
-
-					// Save config
-					if err := config.SaveConfig(cfg); err != nil {
-						return fmt.Errorf("failed to save config: %w", err)
-					}
-
-					return nil
-				},
+			// Validate API key
+			if apiKey == "" {
+				return fmt.Errorf("API key cannot be empty")
 			}
 
-			if err := setKeyCmd.Execute(); err != nil {
-				return fmt.Errorf("failed to set API key: %w", err)
+			// Load current config
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Update API key
+			cfg.OpenAIKey = apiKey
+
+			// Save config
+			if err := config.SaveConfig(cfg); err != nil {
+				return fmt.Errorf("failed to save config: %w", err)
 			}
 
 			fmt.Println("\nGreat! Your API key has been set up successfully.")
@@ -158,30 +145,28 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 			fmt.Println("-----------------")
 			fmt.Println("Here are some common commands to get started:")
 			fmt.Println("")
-			fmt.Println("1. Analyze a file:")
-			fmt.Println("   wash analyze-file <path/to/file>")
-			fmt.Println("   Example: wash analyze-file main.go")
-			fmt.Println("")
-			fmt.Println("2. Monitor your development workflow:")
+			fmt.Println("1. Track your development workflow in real-time")
 			fmt.Println("   wash monitor start")
-			fmt.Println("   This will track your coding activities and provide insights")
 			fmt.Println("")
-			fmt.Println("3. Get a summary of your progress:")
+			fmt.Println("2. Get insights about your code and files")
+			fmt.Println("   wash file <path/to/file>")
+			fmt.Println("")
+			fmt.Println("3. View a summary of your recent progress")
 			fmt.Println("   wash summary")
-			fmt.Println("   Shows a summary of your recent development activities")
 			fmt.Println("")
-			fmt.Println("4. Remember important information:")
+			fmt.Println("4. Save important context and decisions")
 			fmt.Println("   wash remember \"Your note here\"")
-			fmt.Println("   Stores important information for later reference")
 			fmt.Println("")
-			fmt.Println("5. Analyze a bug or issue:")
+			fmt.Println("5. Get help analyzing bugs and issues")
 			fmt.Println("   wash bug \"Description of the bug\"")
-			fmt.Println("   Provides analysis and potential solutions")
+			fmt.Println("")
+			fmt.Println("6. Analyze your project's architecture")
+			fmt.Println("   wash project")
 			fmt.Println("")
 			fmt.Println("For more information about any command, use:")
 			fmt.Println("wash [command] --help")
 			fmt.Println("")
-			fmt.Println("Try running one of these commands to get started!")
+			fmt.Println("Try running wash monitor start to get started!")
 			os.Exit(0)
 		}
 
