@@ -14,8 +14,13 @@ import (
 )
 
 const (
-	terminalSystemPrompt = "You are an expert software architect and intermediary between a human developer and their AI coding agent. Your role is to analyze their code and interactions to identify potential issues and improvements. Especially issues that may have been caused by human error/bias misguiding the AI via poor prompts/communication.\n\n" +
-		"CRITICAL: The reminders are the highest priority context. They usually indicate how an issue was succesfully solved in the past - or how the user prefers to solve issues. AS LONG AS THEY ARE RELEVENT TO THE ISSUE AT HAND, you should consider them first.\n\n" +
+	terminalSystemPrompt = "You are an expert software architect and project manager serving as an intermediary between a human developer and their AI coding agent. Your role is to:\n\n" +
+		"1. Analyze code and interactions with an expert developer's perspective\n" +
+		"2. Identify potential issues and improvements objectively\n" +
+		"3. Provide clear, actionable solutions based on best practices\n" +
+		"4. Help prevent and catch issues that might arise from AI-human miscommunication\n" +
+		"5. Act as a quality gatekeeper for the project\n\n" +
+		"CRITICAL: The reminders are the highest priority context. They usually indicate how an issue was successfully solved in the past - or how the user prefers to solve issues. AS LONG AS THEY ARE RELEVANT TO THE ISSUE AT HAND, you should consider them first.\n\n" +
 		"Focus your analysis on three priority levels:\n\n" +
 		"1. Critical! Must Fix\n" +
 		"   Security vulnerabilities\n" +
@@ -189,7 +194,7 @@ func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, dirPath 
 			return err
 		}
 		// Skip common directories
-		if info.IsDir() && (info.Name() == "node_modules" || info.Name() == ".git" || info.Name() == "vendor") {
+		if info.IsDir() && (info.Name() == "node_modules" || info.Name() == ".git" || info.Name() == "vendor" || info.Name() == "dist" || info.Name() == "build") {
 			return filepath.SkipDir
 		}
 		files = append(files, FileInfo{
@@ -202,107 +207,45 @@ func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, dirPath 
 		return "", fmt.Errorf("error walking directory: %w", err)
 	}
 
-	// Chunk the files into smaller groups
-	const maxFilesPerChunk = 50
-	var chunks [][]FileInfo
-	for i := 0; i < len(files); i += maxFilesPerChunk {
-		end := i + maxFilesPerChunk
-		if end > len(files) {
-			end = len(files)
+	// Build the complete file list
+	var fileList strings.Builder
+	for _, file := range files {
+		if file.IsDir {
+			fileList.WriteString(fmt.Sprintf("📁 %s\n", file.Path))
+		} else {
+			relPath, _ := filepath.Rel(dirPath, file.Path)
+			fileList.WriteString(fmt.Sprintf("  📄 %s\n", relPath))
 		}
-		chunks = append(chunks, files[i:end])
 	}
 
-	// Analyze each chunk
-	var allIssues struct {
-		Critical  []string
-		ShouldFix []string
-		CouldFix  []string
-	}
-
-	for _, chunk := range chunks {
-		var fileList strings.Builder
-		for _, file := range chunk {
-			if file.IsDir {
-				fileList.WriteString(fmt.Sprintf("📁 %s\n", file.Path))
-			} else {
-				relPath, _ := filepath.Rel(dirPath, file.Path)
-				fileList.WriteString(fmt.Sprintf("  📄 %s\n", relPath))
-			}
-		}
-
-		resp, err := a.client.CreateChatCompletion(
-			ctx,
-			openai.ChatCompletionRequest{
-				Model: openai.GPT4,
-				Messages: []openai.ChatCompletionMessage{
-					{
-						Role:    openai.ChatMessageRoleSystem,
-						Content: a.getContextualPrompt() + "\n\nFocus on project structure, organization, and architecture. Format your response EXACTLY as follows:\n\n1. Critical! Must Fix\n[list critical issues here]\n\n2. Should Fix\n[list should fix issues here]\n\n3. Could Fix\n[list could fix issues here]\n\nDo not include any other sections or text.",
-					},
-					{
-						Role:    openai.ChatMessageRoleUser,
-						Content: fmt.Sprintf("Project Structure (partial view):\n%s\n\nAnalyze this project structure and identify issues at each priority level.", fileList.String()),
-					},
+	// Analyze the complete project structure
+	resp, err := a.client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: a.getContextualPrompt() + "\n\nAs an expert project manager and architect, analyze the project structure, organization, and architecture. Focus on identifying potential issues that could impact project success, maintainability, and scalability. Format your response EXACTLY as follows:\n\n1. Critical! Must Fix\n[list critical issues here]\n\n2. Should Fix\n[list should fix issues here]\n\n3. Could Fix\n[list could fix issues here]\n\nIMPORTANT: Do not include any other sections or text. If no issues are found at a priority level, DO NOT include that section at all. Never write 'No issues found' or similar messages.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: fmt.Sprintf("Project Structure:\n%s\n\nAnalyze this project structure and identify issues at each priority level.", fileList.String()),
 				},
 			},
-		)
-		if err != nil {
-			return "", fmt.Errorf("error getting analysis: %w", err)
-		}
-
-		// Parse the response and collect issues
-		content := resp.Choices[0].Message.Content
-		lines := strings.Split(content, "\n")
-		currentSection := ""
-		for _, line := range lines {
-			if strings.HasPrefix(line, "1. Critical! Must Fix") {
-				currentSection = "critical"
-			} else if strings.HasPrefix(line, "2. Should Fix") {
-				currentSection = "should"
-			} else if strings.HasPrefix(line, "3. Could Fix") {
-				currentSection = "could"
-			} else if line != "" && currentSection != "" {
-				switch currentSection {
-				case "critical":
-					allIssues.Critical = append(allIssues.Critical, strings.TrimSpace(line))
-				case "should":
-					allIssues.ShouldFix = append(allIssues.ShouldFix, strings.TrimSpace(line))
-				case "could":
-					allIssues.CouldFix = append(allIssues.CouldFix, strings.TrimSpace(line))
-				}
-			}
-		}
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("error getting analysis: %w", err)
 	}
 
-	// Format the final response
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("# Project Structure Analysis\n*Generated on %s*\n\n", time.Now().Format(time.RFC3339)))
+	// Format the response
+	analysis := fmt.Sprintf(`# Project Structure Analysis
+*Generated on %s*
 
-	if len(allIssues.Critical) > 0 {
-		result.WriteString("1. Critical! Must Fix\n")
-		for _, issue := range allIssues.Critical {
-			result.WriteString(fmt.Sprintf("- %s\n", issue))
-		}
-		result.WriteString("\n")
-	}
+%s`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
 
-	if len(allIssues.ShouldFix) > 0 {
-		result.WriteString("2. Should Fix\n")
-		for _, issue := range allIssues.ShouldFix {
-			result.WriteString(fmt.Sprintf("- %s\n", issue))
-		}
-		result.WriteString("\n")
-	}
-
-	if len(allIssues.CouldFix) > 0 {
-		result.WriteString("3. Could Fix\n")
-		for _, issue := range allIssues.CouldFix {
-			result.WriteString(fmt.Sprintf("- %s\n", issue))
-		}
-	}
-
-	return result.String(), nil
+	return analysis, nil
 }
 
 // AnalyzeChat analyzes chat history and returns formatted terminal output
@@ -314,7 +257,7 @@ func (a *TerminalAnalyzer) AnalyzeChat(ctx context.Context, chatHistory string) 
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: a.getContextualPrompt() + "\n\nFocus on the interaction patterns and communication effectiveness.",
+					Content: a.getContextualPrompt() + "\n\nAs an expert project manager, analyze the interaction patterns and communication effectiveness between the developer and AI. Focus on identifying potential misunderstandings, missed requirements, or areas where better communication could improve the development process.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -345,7 +288,7 @@ func (a *TerminalAnalyzer) GetErrorFix(ctx context.Context, chatHistory string, 
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: a.getContextualPrompt() + fmt.Sprintf("\n\nFocus on fixing the specific error type: %s", errorType),
+					Content: a.getContextualPrompt() + fmt.Sprintf("\n\nAs an expert developer and project manager, analyze and provide solutions for the specific error type: %s. Focus on providing clear, actionable solutions that address both the immediate error and any underlying architectural or design issues that might have led to it.", errorType),
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -382,10 +325,11 @@ func (a *TerminalAnalyzer) AnalyzeBug(ctx context.Context, description string) (
 
 	// Add remember notes to the context if they exist
 	if len(a.rememberNotes) > 0 {
-		contextPrompt += "\n\nREMEMBER NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n"
+		contextPrompt += "\n\nCRITICAL: REMEMBER NOTES (MUST CONSIDER THESE FIRST IN YOUR ANALYSIS):\n"
 		for _, note := range a.rememberNotes {
 			contextPrompt += fmt.Sprintf("- %s\n", note)
 		}
+		contextPrompt += "\nWhen analyzing the bug, you MUST first check if any of these remember notes are relevant to the issue. If they are, they should be your primary consideration for both causes and solutions.\n\n"
 	}
 
 	// Create chat completion request
@@ -396,7 +340,7 @@ func (a *TerminalAnalyzer) AnalyzeBug(ctx context.Context, description string) (
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: contextPrompt + "\n\nFor bug analysis, you MUST format your response EXACTLY as follows:\n\n# Potential Causes\n[list potential causes here]\n\n# Suggested Solutions\n[list suggested solutions here]\n\nDo not include any other sections or text.",
+					Content: contextPrompt + "\n\nFor bug analysis, you MUST format your response EXACTLY as follows:\n\n# Potential Causes\n[list potential causes here, prioritizing any relevant remember notes]\n\n# Suggested Solutions\n[list suggested solutions here, prioritizing any relevant remember notes]\n\nDo not include any other sections or text.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,

@@ -479,30 +479,34 @@ func (nm *NotesManager) GenerateProgressFromMonitor(projectName string, duration
 	client := openai.NewClient(cfg.OpenAIKey)
 
 	// Create the analysis prompt
-	prompt := `You are analyzing a series of development interactions between a user and an AI coding assistant.
-Your task is to analyze these interactions and provide a comprehensive summary and analysis. 
-The user wants to know if they made any poor suggestions in the chat/misguided AI actions. It's your job to identify these miscommunications.
-Also look out for any AI actions that seemed to take a sub-optimal approach for the user's overall goal.
+	prompt := `You are an expert software architect and project manager analyzing a series of development interactions between a user and an AI coding assistant.
+Your task is to generate a concise progress note that will be useful for future summaries to help the user and AI coding assistant optimize their project. Focus on:
+
+1. Key Technical Progress
+   - What significant code changes or implementations occurred?
+   - What technical decisions were made?
+   - What issues were identified or resolved?
+
+2. Mistakes and Errors
+   - What sub-optimal approaches were suggested/taken by the user or AI?
+   - What misunderstandings or miscommunications may have occurred between the user and AI?
+   - Were there any overly complex or unnecessary approaches taken?
+
+3. Next Steps & Improvements
+   - How can the user and AI coding assistant improve their approach?
+   - What alternative approaches can be taken to optimize the project?
+   - What are the logical next steps based on the progress made?
+
+Keep each section brief and focused on technical details. This note will feed into future project summaries, so prioritize information that will be relevant for tracking technical progress and making decisions.
 
 Monitor Notes:
 ` + monitorData.String() + `
 
-Please analyze these interactions and provide:
-1. A concise paragraph summarizing the main development activities and progress
-2. Potential errors or issues that were introduced through bad prompts in the chat/misguided AI actions
-3. Suggestions for alternative, more optimized approaches to:
-   - Errors caused by bad prompts in the chat/miscommunications
-   - Project structure and organization
-   - Features and functionality
-   - Build process and tools
-   - Code quality and maintainability
-4. A list of all files that were modified
-
 Format your response as a JSON object with the following structure:
 {
-    "summary": "paragraph summarizing main activities and progress",
-    "potential_issues": ["list of potential issues or errors"],
-    "optimization_suggestions": ["list of suggestions for better approaches"],
+    "summary": "concise paragraph summarizing main technical activities and progress",
+    "potential_issues": ["list of technical issues or risks"],
+    "optimization_suggestions": ["list of technical improvements or optimizations"],
     "files_changed": ["list of modified files"]
 }`
 
