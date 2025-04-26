@@ -113,44 +113,31 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 				os.Exit(0)
 			}
 
-			// Create and execute the set-key command
-			setKeyCmd := &cobra.Command{
-				Use:   "set-key",
-				Short: "Set your OpenAI API key",
-				RunE: func(cmd *cobra.Command, args []string) error {
-					fmt.Print("Enter your OpenAI API key: ")
-					reader := bufio.NewReader(os.Stdin)
-					apiKey, err := reader.ReadString('\n')
-					if err != nil {
-						return fmt.Errorf("failed to read input: %w", err)
-					}
-					apiKey = strings.TrimSpace(apiKey)
+			// Prompt for API key
+			fmt.Print("Enter your OpenAI API key: ")
+			apiKey, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read input: %w", err)
+			}
+			apiKey = strings.TrimSpace(apiKey)
 
-					// Validate API key
-					if apiKey == "" {
-						return fmt.Errorf("API key cannot be empty")
-					}
-
-					// Load current config
-					cfg, err := config.LoadConfig()
-					if err != nil {
-						return fmt.Errorf("failed to load config: %w", err)
-					}
-
-					// Update API key
-					cfg.OpenAIKey = apiKey
-
-					// Save config
-					if err := config.SaveConfig(cfg); err != nil {
-						return fmt.Errorf("failed to save config: %w", err)
-					}
-
-					return nil
-				},
+			// Validate API key
+			if apiKey == "" {
+				return fmt.Errorf("API key cannot be empty")
 			}
 
-			if err := setKeyCmd.Execute(); err != nil {
-				return fmt.Errorf("failed to set API key: %w", err)
+			// Load current config
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Update API key
+			cfg.OpenAIKey = apiKey
+
+			// Save config
+			if err := config.SaveConfig(cfg); err != nil {
+				return fmt.Errorf("failed to save config: %w", err)
 			}
 
 			fmt.Println("\nGreat! Your API key has been set up successfully.")
@@ -159,8 +146,8 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 			fmt.Println("Here are some common commands to get started:")
 			fmt.Println("")
 			fmt.Println("1. Analyze a file:")
-			fmt.Println("   wash analyze-file <path/to/file>")
-			fmt.Println("   Example: wash analyze-file main.go")
+			fmt.Println("   wash file <path/to/file>")
+			fmt.Println("   Example: wash file main.go")
 			fmt.Println("")
 			fmt.Println("2. Monitor your development workflow:")
 			fmt.Println("   wash monitor start")
@@ -177,6 +164,10 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 			fmt.Println("5. Analyze a bug or issue:")
 			fmt.Println("   wash bug \"Description of the bug\"")
 			fmt.Println("   Provides analysis and potential solutions")
+			fmt.Println("")
+			fmt.Println("6. Analyze project structure:")
+			fmt.Println("   wash project")
+			fmt.Println("   Analyzes your project's organization and architecture")
 			fmt.Println("")
 			fmt.Println("For more information about any command, use:")
 			fmt.Println("wash [command] --help")
