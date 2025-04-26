@@ -22,21 +22,21 @@ const (
 		"5. Act as a quality gatekeeper for the project\n\n" +
 		"CRITICAL: The reminders are the highest priority context. They usually indicate how an issue was successfully solved in the past - or how the user prefers to solve issues. AS LONG AS THEY ARE RELEVANT TO THE ISSUE AT HAND, you should consider them first.\n\n" +
 		"Focus your analysis on three priority levels:\n\n" +
-		"1. Critical! Must Fix\n" +
+		"* Critical! Must Fix\n" +
 		"   Security vulnerabilities\n" +
 		"   Data corruption risks\n" +
 		"   Performance bottlenecks\n" +
 		"   Major architectural flaws\n" +
 		"   Breaking changes\n" +
 		"   Issues related to user reminders\n\n" +
-		"2. Should Fix\n" +
+		"* Should Fix\n" +
 		"   Code maintainability issues\n" +
 		"   Possible artifacts of old code that is no longer needed\n" +
 		"   Common best practice violations\n" +
 		"   Performance issues\n" +
 		"   Potential future problems\n" +
 		"   Suboptimal patterns\n\n" +
-		"3. Could Fix\n" +
+		"* Could Fix\n" +
 		"   Alternative tool/language recommendations\n" +
 		"   Code style suggestions\n" +
 		"   Documentation improvements\n" +
@@ -182,43 +182,26 @@ func (a *TerminalAnalyzer) AnalyzeFile(ctx context.Context, filePath string) (st
 }
 
 // AnalyzeProjectStructure analyzes the project structure and returns formatted terminal output
-func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, dirPath string) (string, error) {
-	// First, collect all files and directories
-	type FileInfo struct {
-		Path  string
-		IsDir bool
-	}
-	var files []FileInfo
-	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, projectPath string) (string, error) {
+	// Get list of files in the project
+	fileList := &strings.Builder{}
+	err := filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		// Skip common directories
-		if info.IsDir() && (info.Name() == "node_modules" || info.Name() == ".git" || info.Name() == "vendor" || info.Name() == "dist" || info.Name() == "build") {
-			return filepath.SkipDir
+		if !info.IsDir() {
+			relPath, err := filepath.Rel(projectPath, path)
+			if err != nil {
+				return err
+			}
+			fileList.WriteString(relPath + "\n")
 		}
-		files = append(files, FileInfo{
-			Path:  path,
-			IsDir: info.IsDir(),
-		})
 		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("error walking directory: %w", err)
+		return "", fmt.Errorf("error walking project directory: %w", err)
 	}
 
-	// Build the complete file list
-	var fileList strings.Builder
-	for _, file := range files {
-		if file.IsDir {
-			fileList.WriteString(fmt.Sprintf("📁 %s\n", file.Path))
-		} else {
-			relPath, _ := filepath.Rel(dirPath, file.Path)
-			fileList.WriteString(fmt.Sprintf("  📄 %s\n", relPath))
-		}
-	}
-
-	// Analyze the complete project structure
 	resp, err := a.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
@@ -226,7 +209,7 @@ func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, dirPath 
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: a.getContextualPrompt() + "\n\nAs an expert project manager and architect, analyze the project structure, organization, and architecture. Focus on identifying potential issues that could impact project success, maintainability, and scalability. Format your response EXACTLY as follows:\n\n1. Critical! Must Fix\n[list critical issues here]\n\n2. Should Fix\n[list should fix issues here]\n\n3. Could Fix\n[list could fix issues here]\n\nIMPORTANT: Do not include any other sections or text. If no issues are found at a priority level, DO NOT include that section at all. Never write 'No issues found' or similar messages.",
+					Content: a.getContextualPrompt() + "\n\nAs an expert project manager and architect, analyze the project structure, organization, and architecture. Focus on identifying potential issues that could impact project success, maintainability, and scalability. Format your response EXACTLY as follows:\n\n* Critical! Must Fix\n[list critical issues here]\n\n* Should Fix\n[list should fix issues here]\n\n* Could Fix\n[list could fix issues here]\n\nIMPORTANT: Do not include any other sections or text. If no issues are found at a priority level, say \"No issues found\". Never write 'No issues found' or similar messages.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
