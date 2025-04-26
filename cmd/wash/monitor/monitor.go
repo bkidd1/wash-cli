@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -47,7 +48,26 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Check if monitor is already running
 			if _, err := os.Stat(pidFile); err == nil {
-				return fmt.Errorf("monitor is already running. Use 'wash monitor stop' to stop it first")
+				// Read PID from file
+				pidBytes, err := os.ReadFile(pidFile)
+				if err != nil {
+					// Clean up invalid PID file
+					os.Remove(pidFile)
+				} else {
+					pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+					if err == nil {
+						// Check if process exists and is running
+						process, err := os.FindProcess(pid)
+						if err == nil {
+							// On Unix systems, FindProcess always succeeds, so we need to check if the process is actually running
+							if err := process.Signal(syscall.Signal(0)); err == nil {
+								return fmt.Errorf("monitor is already running. Use 'wash monitor stop' to stop it first")
+							}
+						}
+					}
+					// Clean up invalid or stale PID file
+					os.Remove(pidFile)
+				}
 			}
 
 			// If project name not provided, use current directory name
@@ -188,21 +208,53 @@ This will:
 2. Save current progress
 3. Generate final report`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Check if PID file exists
+			if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+				fmt.Println("No monitor process is running")
+				return nil
+			}
+
 			// Read PID from file
 			pidBytes, err := os.ReadFile(pidFile)
 			if err != nil {
-				return fmt.Errorf("no monitor process found")
+				// Clean up invalid PID file
+				os.Remove(pidFile)
+				fmt.Println("No monitor process is running")
+				return nil
 			}
 
-			pid, err := strconv.Atoi(string(pidBytes))
+			pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
 			if err != nil {
-				return fmt.Errorf("invalid PID in file")
+				// Clean up invalid PID file
+				os.Remove(pidFile)
+				fmt.Println("No monitor process is running")
+				return nil
+			}
+
+			// Check if process exists and is running
+			process, err := os.FindProcess(pid)
+			if err != nil {
+				// Clean up PID file for non-existent process
+				os.Remove(pidFile)
+				fmt.Println("No monitor process is running")
+				return nil
+			}
+
+			// On Unix systems, FindProcess always succeeds, so we need to check if the process is actually running
+			if err := process.Signal(syscall.Signal(0)); err != nil {
+				// Process not running, clean up PID file
+				os.Remove(pidFile)
+				fmt.Println("No monitor process is running")
+				return nil
 			}
 
 			// Send termination signal to the process group
 			pgid, err := syscall.Getpgid(pid)
 			if err != nil {
-				return fmt.Errorf("failed to get process group: %w", err)
+				// Clean up PID file if we can't get the process group
+				os.Remove(pidFile)
+				fmt.Println("No monitor process is running")
+				return nil
 			}
 
 			if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
