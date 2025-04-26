@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 var (
 	// Global flags
 	projectName string
+	pidFile     = filepath.Join(os.TempDir(), "wash-monitor.pid")
 )
 
 // Command creates the monitor command with start and stop subcommands
@@ -31,40 +33,23 @@ The monitor tracks:
 - Time spent on tasks
 - Project progress
 
-Use the start and stop subcommands to control monitoring.
+Use the stop subcommand to stop monitoring.
 
 Examples:
   # Start monitoring current project
-  wash monitor start
+  wash monitor
 
   # Start monitoring specific project
-  wash monitor start --project my-project
+  wash monitor --project my-project
 
   # Stop monitoring
   wash monitor stop`,
-	}
-
-	// Add global flags
-	cmd.PersistentFlags().StringVarP(&projectName, "project", "p", "", "Project name (defaults to current directory name)")
-
-	// Add subcommands
-	cmd.AddCommand(startCmd())
-	cmd.AddCommand(stopCmd())
-
-	return cmd
-}
-
-func startCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "start",
-		Short: "Start monitoring development workflow",
-		Long: `Start monitoring your development workflow to track progress and provide insights.
-The monitor will:
-1. Track code changes and interactions
-2. Analyze development patterns
-3. Generate progress reports
-4. Provide optimization suggestions`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Check if monitor is already running
+			if _, err := os.Stat(pidFile); err == nil {
+				return fmt.Errorf("monitor is already running. Use 'wash monitor stop' to stop it first")
+			}
+
 			// If project name not provided, use current directory name
 			if projectName == "" {
 				cwd, err := os.Getwd()
@@ -86,38 +71,105 @@ The monitor will:
 				return fmt.Errorf("failed to create monitor: %w", err)
 			}
 
-			// Handle graceful shutdown
-			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+			// Start monitoring
+			if err := m.Start(); err != nil {
+				return fmt.Errorf("failed to start monitor: %w", err)
+			}
 
-			go func() {
-				<-sigChan
-				m.Stop()
-			}()
+			// Write PID to file
+			if err := os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0644); err != nil {
+				return fmt.Errorf("failed to write PID file: %w", err)
+			}
+
+			// Start time for elapsed time calculation
+			startTime := time.Now()
+
+			// Create a ticker for updating the timer display
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+
+			// Create a channel for handling interrupts
+			interrupt := make(chan os.Signal, 1)
+			signal.Notify(interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+			// Display timer in foreground
+			fmt.Println("Monitoring started. Press Ctrl+C to stop.")
+			for {
+				select {
+				case <-ticker.C:
+					elapsed := time.Since(startTime)
+					fmt.Printf("\rMonitoring for: %02d:%02d:%02d",
+						int(elapsed.Hours()),
+						int(elapsed.Minutes())%60,
+						int(elapsed.Seconds())%60)
+				case <-interrupt:
+					fmt.Println("\nStopping monitor...")
+					m.Stop()
+					os.Remove(pidFile)
+					return nil
+				}
+			}
+		},
+	}
+
+	// Add global flags
+	cmd.PersistentFlags().StringVarP(&projectName, "project", "p", "", "Project name (defaults to current directory name)")
+
+	// Add stop command
+	cmd.AddCommand(stopCmd())
+
+	return cmd
+}
+
+func runMonitorCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:    "run-monitor",
+		Short:  "Run the monitor process (internal use)",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load configuration
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Create monitor
+			m, err := chatmonitor.NewMonitor(cfg, projectName)
+			if err != nil {
+				return fmt.Errorf("failed to create monitor: %w", err)
+			}
 
 			// Start monitoring
 			if err := m.Start(); err != nil {
 				return fmt.Errorf("failed to start monitor: %w", err)
 			}
 
-			fmt.Printf("Monitoring started for %s\n", projectName)
+			// Start time for elapsed time calculation
+			startTime := time.Now()
 
-			// Start timer display
+			// Create a ticker for updating the timer display
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
 
-			// Wait for monitor to complete
+			// Create a channel for handling interrupts
+			interrupt := make(chan os.Signal, 1)
+			signal.Notify(interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+			// Display timer in foreground
+			fmt.Println("Monitoring started. Press Ctrl+C to stop.")
 			for {
 				select {
-				case <-sigChan:
-					m.Stop()
-					return nil
 				case <-ticker.C:
-					elapsed := time.Since(m.StartTime())
-					hours := int(elapsed.Hours())
-					minutes := int(elapsed.Minutes()) % 60
-					seconds := int(elapsed.Seconds()) % 60
-					fmt.Printf("\rRunning for: %02d:%02d:%02d", hours, minutes, seconds)
+					elapsed := time.Since(startTime)
+					fmt.Printf("\rMonitoring for: %02d:%02d:%02d",
+						int(elapsed.Hours()),
+						int(elapsed.Minutes())%60,
+						int(elapsed.Seconds())%60)
+				case <-interrupt:
+					fmt.Println("\nStopping monitor...")
+					m.Stop()
+					os.Remove(pidFile)
+					return nil
 				}
 			}
 		},
@@ -136,21 +188,29 @@ This will:
 2. Save current progress
 3. Generate final report`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Load configuration
-			cfg, err := config.LoadConfig()
+			// Read PID from file
+			pidBytes, err := os.ReadFile(pidFile)
 			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
+				return fmt.Errorf("no monitor process found")
 			}
 
-			// Create monitor
-			m, err := chatmonitor.NewMonitor(cfg, projectName)
+			pid, err := strconv.Atoi(string(pidBytes))
 			if err != nil {
-				return fmt.Errorf("failed to create monitor: %w", err)
+				return fmt.Errorf("invalid PID in file")
 			}
 
-			if err := m.Stop(); err != nil {
+			// Send termination signal to the process group
+			pgid, err := syscall.Getpgid(pid)
+			if err != nil {
+				return fmt.Errorf("failed to get process group: %w", err)
+			}
+
+			if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
 				return fmt.Errorf("failed to stop monitor: %w", err)
 			}
+
+			// Remove PID file
+			os.Remove(pidFile)
 
 			fmt.Println("Monitoring stopped")
 			return nil
