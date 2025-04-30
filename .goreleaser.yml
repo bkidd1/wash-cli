@@ -56,7 +56,7 @@ changelog:
 brews:
   - repository:
       owner: bkidd1
-      name: homebrew-tap
+      name: homebrew-wash_brew
       branch: main
     commit_author:
       name: goreleaserbot
