@@ -3,6 +3,7 @@ package versioncmd
 import (
 	"fmt"
 
+	"github.com/bkidd1/wash-cli/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -13,7 +14,7 @@ func Command() *cobra.Command {
 		Short: "Print the version information",
 		Long:  `Print the version information including the version number, commit hash, and build date.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println(cmd.Root().Version)
+			fmt.Println(version.String())
 		},
 	}
 }
