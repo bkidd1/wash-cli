@@ -51,18 +51,4 @@ changelog:
       - '^ci:'
       - '^chore:'
       - '^refactor:'
-      - '^style:'
-
-brews:
-  - repository:
-      owner: bkidd1
-      name: homebrew-wash_brew
-      branch: main
-    commit_author:
-      name: goreleaserbot
-      email: bot@goreleaser.com
-    homepage: "https://github.com/bkidd1/wash-cli"
-    description: "A development assistant that helps track errors, decisions, and project state"
-    license: "MIT"
-    install: |
-      bin.install "wash" 
+      - '^style:' 
