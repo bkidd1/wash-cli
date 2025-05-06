@@ -1,11 +1,8 @@
 # Wash CLI
 
 Wash CLI is an AI-powered development assistant that helps you:
-- Monitor your development workflow
-- Track project progress
 - Remember important details
 - Analyze code and suggest improvements
-- Generate summaries and documentation
 - Debug and fix issues
 
 ## Installation
@@ -56,10 +53,10 @@ You can add this to your shell's configuration file (e.g., `~/.bashrc`, `~/.zshr
 
 Basic commands:
 ```bash
-wash monitor start    # Start monitoring your development workflow
-wash summary         # Get a summary of today's progress
 wash remember       # Save important information
 wash bug            # Report and track bugs
+wash file          # Analyze code files
+wash project       # Analyze project structure
 ```
 
 For more information about a specific command, use:
@@ -71,7 +68,7 @@ wash [command] --help
 
 Analyze a specific file:
 ```bash
-wash analyze-file path/to/file.go
+wash file path/to/file.go
 ```
 
 ## Troubleshooting
@@ -198,7 +195,6 @@ To improve performance:
    - Configuration files are stored with restricted permissions
    - Temporary files are created with secure permissions
    - Cache files are isolated per user
-
 3. **Network Security**
    - All API calls use HTTPS
    - Certificate validation is enforced

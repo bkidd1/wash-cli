@@ -25,7 +25,6 @@ var rootCmd = &cobra.Command{
 	Short: "Wash CLI - Your AI-powered development assistant",
 	Long: `Wash CLI is an AI-powered development assistant that helps you:
 - Analyze code and bugs
-- Monitor your project
 - Provide intelligent suggestions
 - Remember important context`,
 }
@@ -34,13 +33,21 @@ func init() {
 	// Add commands
 	rootCmd.AddCommand(file.Command())
 	rootCmd.AddCommand(bug.Command())
-	rootCmd.AddCommand(monitor.Command())
+
+	// Add hidden commands
+	monitorCmd := monitor.Command()
+	monitorCmd.Hidden = true
+	rootCmd.AddCommand(monitorCmd)
+
 	rootCmd.AddCommand(configcmd.Command())
 	rootCmd.AddCommand(project.Command())
-	rootCmd.AddCommand(
-		remember.Command(),
-		summary.Command(),
-	)
+
+	// Add hidden commands
+	rememberCmd := remember.Command()
+	summaryCmd := summary.Command()
+	summaryCmd.Hidden = true
+	rootCmd.AddCommand(rememberCmd, summaryCmd)
+
 	rootCmd.AddCommand(versioncmd.Command())
 
 	// Hide the default completion command
@@ -145,28 +152,22 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 			fmt.Println("-----------------")
 			fmt.Println("Here are some common commands to get started:")
 			fmt.Println("")
-			fmt.Println("1. Track your development workflow in real-time")
-			fmt.Println("   wash monitor start")
-			fmt.Println("")
-			fmt.Println("2. Get insights about your code and files")
+			fmt.Println("1. Get insights about your code and files")
 			fmt.Println("   wash file <path/to/file>")
 			fmt.Println("")
-			fmt.Println("3. View a summary of your recent progress")
-			fmt.Println("   wash summary")
-			fmt.Println("")
-			fmt.Println("4. Save important context and decisions")
+			fmt.Println("2. Save important context and decisions")
 			fmt.Println("   wash remember \"Your note here\"")
 			fmt.Println("")
-			fmt.Println("5. Get help analyzing bugs and issues")
+			fmt.Println("3. Get help analyzing bugs and issues")
 			fmt.Println("   wash bug \"Description of the bug\"")
 			fmt.Println("")
-			fmt.Println("6. Analyze your project's architecture")
+			fmt.Println("4. Analyze your project's architecture")
 			fmt.Println("   wash project")
 			fmt.Println("")
 			fmt.Println("For more information about any command, use:")
 			fmt.Println("wash [command] --help")
 			fmt.Println("")
-			fmt.Println("Try running wash monitor start to get started!")
+			fmt.Println("Try running wash file to get started!")
 			os.Exit(0)
 		}
 

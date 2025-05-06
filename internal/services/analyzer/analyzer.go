@@ -2,14 +2,12 @@ package analyzer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/bkidd1/wash-cli/internal/services/notes"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -53,7 +51,6 @@ type TerminalAnalyzer struct {
 	client        *openai.Client
 	projectGoal   string
 	rememberNotes []string
-	notesManager  *notes.NotesManager
 }
 
 // NewTerminalAnalyzer creates a new terminal analyzer
@@ -66,17 +63,10 @@ func NewTerminalAnalyzer(apiKey string, projectGoal string, rememberNotes []stri
 		fmt.Printf("Warning: Could not create wash directory: %v\n", err)
 	}
 
-	notesManager, err := notes.NewNotesManager()
-	if err != nil {
-		fmt.Printf("Warning: Could not create notes manager: %v\n", err)
-		notesManager = nil
-	}
-
 	return &TerminalAnalyzer{
 		client:        client,
 		projectGoal:   projectGoal,
 		rememberNotes: rememberNotes,
-		notesManager:  notesManager,
 	}
 }
 
@@ -92,52 +82,6 @@ func (a *TerminalAnalyzer) getContextualPrompt() string {
 	// Add the system prompt
 	context.WriteString(terminalSystemPrompt)
 	context.WriteString("\n\n")
-
-	// Add recent monitor notes if available
-	if a.notesManager != nil {
-		// Get the current working directory name as project name
-		cwd, err := os.Getwd()
-		if err == nil {
-			projectName := filepath.Base(cwd)
-			// Get recent monitor notes
-			monitorDir := a.notesManager.GetMonitorNotesDir(projectName)
-
-			// Create monitor directory if it doesn't exist
-			if err := os.MkdirAll(monitorDir, 0755); err != nil {
-				fmt.Printf("Warning: Could not create monitor directory: %v\n", err)
-			} else {
-				files, err := os.ReadDir(monitorDir)
-				if err == nil {
-					context.WriteString("RECENT WASH NOTES (USE THESE TO INFORM YOUR ANALYSIS):\n")
-					cutoff := time.Now().Add(-5 * time.Minute)
-
-					// Read files in reverse chronological order
-					for i := len(files) - 1; i >= 0; i-- {
-						file := files[i]
-						if filepath.Ext(file.Name()) != ".json" {
-							continue
-						}
-
-						data, err := os.ReadFile(filepath.Join(monitorDir, file.Name()))
-						if err != nil {
-							continue
-						}
-
-						var note notes.MonitorNote
-						if err := json.Unmarshal(data, &note); err != nil {
-							continue
-						}
-
-						if note.Timestamp.After(cutoff) {
-							context.WriteString(fmt.Sprintf("- %s: User asked '%s'\n", note.Timestamp.Format("2006-01-02 15:04:05"), note.Interaction.UserRequest))
-							context.WriteString(fmt.Sprintf("  AI responded: %s\n", note.Interaction.AIAction))
-						}
-					}
-					context.WriteString("\n")
-				}
-			}
-		}
-	}
 
 	// Add project goal
 	context.WriteString(fmt.Sprintf("PROJECT GOAL:\n%s\n\n", a.projectGoal))
