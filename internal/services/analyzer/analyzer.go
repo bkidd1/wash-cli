@@ -185,21 +185,50 @@ func (a *TerminalAnalyzer) AnalyzeFile(ctx context.Context, filePath string) (st
 func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, projectPath string) (string, error) {
 	// Get list of files in the project
 	fileList := &strings.Builder{}
+	fileCount := 0
+	maxFiles := 100 // Limit the number of files to prevent token limit issues
+
 	err := filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() {
+			// Skip binary files and other non-text files
+			if strings.HasSuffix(path, ".exe") || strings.HasSuffix(path, ".dll") ||
+				strings.HasSuffix(path, ".so") || strings.HasSuffix(path, ".dylib") ||
+				strings.HasSuffix(path, ".bin") || strings.HasSuffix(path, ".dat") {
+				return nil
+			}
+
 			relPath, err := filepath.Rel(projectPath, path)
 			if err != nil {
 				return err
 			}
+
+			// Skip common large directories
+			if strings.Contains(relPath, "node_modules") ||
+				strings.Contains(relPath, ".git") ||
+				strings.Contains(relPath, "vendor") {
+				return nil
+			}
+
 			fileList.WriteString(relPath + "\n")
+			fileCount++
+
+			// Stop after reaching max files
+			if fileCount >= maxFiles {
+				return filepath.SkipAll
+			}
 		}
 		return nil
 	})
 	if err != nil {
 		return "", fmt.Errorf("error walking project directory: %w", err)
+	}
+
+	// Add a note if we hit the file limit
+	if fileCount >= maxFiles {
+		fileList.WriteString(fmt.Sprintf("\nNote: Only showing first %d files for analysis.\n", maxFiles))
 	}
 
 	resp, err := a.client.CreateChatCompletion(
@@ -216,9 +245,11 @@ func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, projectP
 					Content: fmt.Sprintf("Project Structure:\n%s\n\nAnalyze this project structure and identify issues at each priority level.", fileList.String()),
 				},
 			},
+			MaxTokens: 4000,
 		},
 	)
 	if err != nil {
+		fmt.Printf("DEBUG: Error from OpenAI API: %v\n", err)
 		return "", fmt.Errorf("error getting analysis: %w", err)
 	}
 

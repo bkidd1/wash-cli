@@ -106,7 +106,7 @@ Examples:
 			result, err := analyzer.AnalyzeProjectStructure(context.Background(), absPath)
 			if err != nil {
 				// Check if error is token limit related
-				if strings.Contains(err.Error(), "token") || strings.Contains(err.Error(), "length") {
+				if strings.Contains(err.Error(), "maximum context length") || strings.Contains(err.Error(), "resulted in") {
 					done <- true
 					fmt.Println("\n⚠️  Project is too large for complete analysis.")
 					fmt.Println("Please specify a subdirectory to analyze (e.g., 'cmd', 'internal', 'pkg'):")
