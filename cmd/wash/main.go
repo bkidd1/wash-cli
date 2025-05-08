@@ -10,6 +10,7 @@ import (
 	"github.com/bkidd1/wash-cli/cmd/wash/project"
 	"github.com/bkidd1/wash-cli/cmd/wash/remember"
 	"github.com/bkidd1/wash-cli/cmd/wash/summary"
+	versioncmd "github.com/bkidd1/wash-cli/cmd/wash/version"
 	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,7 @@ func init() {
 	// Add commands
 	rootCmd.AddCommand(file.Command())
 	rootCmd.AddCommand(bug.Command())
+	rootCmd.AddCommand(versioncmd.Command())
 
 	// Add hidden commands
 	monitorCmd := monitor.Command()
