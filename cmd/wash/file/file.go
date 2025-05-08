@@ -161,6 +161,57 @@ Examples:
 			fmt.Println("\nAnalysis Results:")
 			fmt.Println("----------------")
 			fmt.Println(result)
+
+			// Check if this is a partial analysis
+			if strings.Contains(result, "Would you like to analyze the remaining lines?") {
+				fmt.Print("\nYour choice (y/n): ")
+				reader := bufio.NewReader(os.Stdin)
+				input, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("failed to read input: %w", err)
+				}
+
+				input = strings.TrimSpace(strings.ToLower(input))
+				if input == "y" || input == "yes" {
+					// Create a new channel for the second analysis
+					done = make(chan bool)
+					go loadingAnimation(done)
+
+					// Get the remaining content
+					content, err := os.ReadFile(absPath)
+					if err != nil {
+						done <- true
+						return fmt.Errorf("error reading file: %w", err)
+					}
+
+					lines := strings.Split(string(content), "\n")
+					// Assuming average of 6 tokens per line and reserving 4000 tokens for system prompt and overhead
+					approxLines := (8192 - 4000) / 6 // GPT-4's context window is 8192 tokens
+
+					// Further reduce by 30% to be safe
+					approxLines = (approxLines * 7) / 10
+
+					// Ensure we don't exceed the number of lines
+					if approxLines > len(lines) {
+						approxLines = len(lines)
+					}
+
+					remainingContent := strings.Join(lines[approxLines:], "\n")
+
+					// Analyze the remaining content
+					remainingResult, err := analyzer.AnalyzeContent(context.Background(), remainingContent)
+					if err != nil {
+						done <- true
+						return fmt.Errorf("failed to analyze remaining content: %w", err)
+					}
+
+					done <- true
+					fmt.Println("\nRemaining Analysis:")
+					fmt.Println("------------------")
+					fmt.Println(remainingResult)
+				}
+			}
+
 			return nil
 		},
 	}

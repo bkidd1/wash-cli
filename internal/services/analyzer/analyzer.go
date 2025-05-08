@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bkidd1/wash-cli/internal/utils/ignore"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -96,6 +97,11 @@ func (a *TerminalAnalyzer) AnalyzeFile(ctx context.Context, filePath string) (st
 		return "", fmt.Errorf("error reading file: %w", err)
 	}
 
+	// Split content into lines for tracking
+	lines := strings.Split(string(content), "\n")
+	totalLines := len(lines)
+
+	// Try to analyze the entire file first
 	resp, err := a.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
@@ -113,6 +119,60 @@ func (a *TerminalAnalyzer) AnalyzeFile(ctx context.Context, filePath string) (st
 		},
 	)
 	if err != nil {
+		// Check if error is token limit related
+		if strings.Contains(err.Error(), "maximum context length") || strings.Contains(err.Error(), "resulted in") {
+			// Calculate approximate lines that fit within token limit
+			// Assuming average of 6 tokens per line and reserving 4000 tokens for system prompt and overhead
+			approxLines := (8192 - 4000) / 6 // GPT-4's context window is 8192 tokens
+
+			// Further reduce by 30% to be safe
+			approxLines = (approxLines * 7) / 10
+
+			// Ensure we don't exceed the number of lines
+			if approxLines > totalLines {
+				approxLines = totalLines
+			}
+
+			// Get partial content
+			partialContent := strings.Join(lines[:approxLines], "\n")
+
+			// Try to analyze partial content
+			resp, err = a.client.CreateChatCompletion(
+				ctx,
+				openai.ChatCompletionRequest{
+					Model: openai.GPT4,
+					Messages: []openai.ChatCompletionMessage{
+						{
+							Role:    openai.ChatMessageRoleSystem,
+							Content: a.getContextualPrompt(),
+						},
+						{
+							Role:    openai.ChatMessageRoleUser,
+							Content: partialContent,
+						},
+					},
+				},
+			)
+			if err != nil {
+				return "", fmt.Errorf("error getting partial analysis: %w", err)
+			}
+
+			// Format the response with partial analysis warning
+			analysis := fmt.Sprintf(`# Code Analysis (Partial)
+*Generated on %s*
+
+⚠️  File is too large for complete analysis. Analyzed lines 1-%d of %d.
+
+%s
+
+Would you like to analyze the remaining lines? (y/n)`,
+				time.Now().Format(time.RFC3339),
+				approxLines,
+				totalLines,
+				resp.Choices[0].Message.Content)
+
+			return analysis, nil
+		}
 		return "", fmt.Errorf("error getting analysis: %w", err)
 	}
 
@@ -127,32 +187,41 @@ func (a *TerminalAnalyzer) AnalyzeFile(ctx context.Context, filePath string) (st
 
 // AnalyzeProjectStructure analyzes the project structure and returns formatted terminal output
 func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, projectPath string) (string, error) {
+	// Load ignore patterns from .gitignore and default patterns
+	ignorePatterns, err := ignore.LoadGitignorePatterns(projectPath)
+	if err != nil {
+		return "", fmt.Errorf("error loading ignore patterns: %w", err)
+	}
+
 	// Get list of files in the project
 	fileList := &strings.Builder{}
 	fileCount := 0
 	maxFiles := 100 // Limit the number of files to prevent token limit issues
 
-	err := filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
+		// Get relative path for ignore pattern matching
+		relPath, err := filepath.Rel(projectPath, path)
+		if err != nil {
+			return err
+		}
+
+		// Skip ignored paths
+		if ignore.ShouldIgnore(relPath, ignorePatterns) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
 		if !info.IsDir() {
 			// Skip binary files and other non-text files
 			if strings.HasSuffix(path, ".exe") || strings.HasSuffix(path, ".dll") ||
 				strings.HasSuffix(path, ".so") || strings.HasSuffix(path, ".dylib") ||
 				strings.HasSuffix(path, ".bin") || strings.HasSuffix(path, ".dat") {
-				return nil
-			}
-
-			relPath, err := filepath.Rel(projectPath, path)
-			if err != nil {
-				return err
-			}
-
-			// Skip common large directories
-			if strings.Contains(relPath, "node_modules") ||
-				strings.Contains(relPath, ".git") ||
-				strings.Contains(relPath, "vendor") {
 				return nil
 			}
 
@@ -198,7 +267,7 @@ func (a *TerminalAnalyzer) AnalyzeProjectStructure(ctx context.Context, projectP
 	}
 
 	// Format the response
-	analysis := fmt.Sprintf(`# Project Structure Analysis
+	analysis := fmt.Sprintf(`# Project Analysis
 *Generated on %s*
 
 %s`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
@@ -371,4 +440,35 @@ func (a *TerminalAnalyzer) GetProjectGoal() string {
 // GetRememberNotes returns the remember notes
 func (a *TerminalAnalyzer) GetRememberNotes() []string {
 	return a.rememberNotes
+}
+
+// AnalyzeContent analyzes specific content and returns formatted terminal output
+func (a *TerminalAnalyzer) AnalyzeContent(ctx context.Context, content string) (string, error) {
+	resp, err := a.client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: a.getContextualPrompt(),
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: content,
+				},
+			},
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("error getting analysis: %w", err)
+	}
+
+	// Format the response with priority levels
+	analysis := fmt.Sprintf(`# Code Analysis
+*Generated on %s*
+
+%s`, time.Now().Format(time.RFC3339), resp.Choices[0].Message.Content)
+
+	return analysis, nil
 }

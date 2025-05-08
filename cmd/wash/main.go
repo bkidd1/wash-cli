@@ -1,19 +1,15 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/bkidd1/wash-cli/cmd/wash/bug"
-	configcmd "github.com/bkidd1/wash-cli/cmd/wash/config"
 	"github.com/bkidd1/wash-cli/cmd/wash/file"
 	"github.com/bkidd1/wash-cli/cmd/wash/monitor"
 	"github.com/bkidd1/wash-cli/cmd/wash/project"
 	"github.com/bkidd1/wash-cli/cmd/wash/remember"
 	"github.com/bkidd1/wash-cli/cmd/wash/summary"
-	versioncmd "github.com/bkidd1/wash-cli/cmd/wash/version"
 	"github.com/bkidd1/wash-cli/internal/utils/config"
 	"github.com/spf13/cobra"
 )
@@ -39,7 +35,6 @@ func init() {
 	monitorCmd.Hidden = true
 	rootCmd.AddCommand(monitorCmd)
 
-	rootCmd.AddCommand(configcmd.Command())
 	rootCmd.AddCommand(project.Command())
 
 	// Add hidden commands
@@ -47,8 +42,6 @@ func init() {
 	summaryCmd := summary.Command()
 	summaryCmd.Hidden = true
 	rootCmd.AddCommand(rememberCmd, summaryCmd)
-
-	rootCmd.AddCommand(versioncmd.Command())
 
 	// Hide the default completion command
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
@@ -98,77 +91,13 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 		// Check if API key is set
 		hasKey, err := config.ValidateAPIKey()
 		if err != nil {
-			return fmt.Errorf("failed to validate API key: %w", err)
+			return fmt.Errorf("error checking API key: %w", err)
 		}
 
 		if !hasKey {
-			fmt.Println("\nWelcome to Wash CLI! 🚀")
-			fmt.Println("Before you can start using Wash, you need to set up your OpenAI API key.")
-			fmt.Println("You can get your API key from: https://platform.openai.com/api-keys")
-			fmt.Println("\nWould you like to set up your API key now? (yes/no)")
-
-			reader := bufio.NewReader(os.Stdin)
-			input, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("failed to read input: %w", err)
-			}
-
-			input = strings.TrimSpace(strings.ToLower(input))
-			if input != "yes" && input != "y" {
-				fmt.Println("\nYou'll need to set up your API key before using Wash.")
-				fmt.Println("You can do this later by running: wash config set-key")
-				os.Exit(0)
-			}
-
-			// Prompt for API key
-			fmt.Print("Enter your OpenAI API key: ")
-			apiKey, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("failed to read input: %w", err)
-			}
-			apiKey = strings.TrimSpace(apiKey)
-
-			// Validate API key
-			if apiKey == "" {
-				return fmt.Errorf("API key cannot be empty")
-			}
-
-			// Load current config
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
-
-			// Update API key
-			cfg.OpenAIKey = apiKey
-
-			// Save config
-			if err := config.SaveConfig(cfg); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
-			}
-
-			fmt.Println("\nGreat! Your API key has been set up successfully.")
-			fmt.Println("\nQuick Start Guide:")
-			fmt.Println("-----------------")
-			fmt.Println("Here are some common commands to get started:")
-			fmt.Println("")
-			fmt.Println("1. Get insights about your code and files")
-			fmt.Println("   wash file <path/to/file>")
-			fmt.Println("")
-			fmt.Println("2. Save important context and decisions")
-			fmt.Println("   wash remember \"Your note here\"")
-			fmt.Println("")
-			fmt.Println("3. Get help analyzing bugs and issues")
-			fmt.Println("   wash bug \"Description of the bug\"")
-			fmt.Println("")
-			fmt.Println("4. Analyze your project's architecture")
-			fmt.Println("   wash project")
-			fmt.Println("")
-			fmt.Println("For more information about any command, use:")
-			fmt.Println("wash [command] --help")
-			fmt.Println("")
-			fmt.Println("Try running wash file to get started!")
-			os.Exit(0)
+			fmt.Println("No OpenAI API key found. Please set your API key to continue.")
+			fmt.Println("You can do this later by running: wash config set-key")
+			return fmt.Errorf("API key not set")
 		}
 
 		return nil
