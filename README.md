@@ -200,4 +200,4 @@ To improve performance:
    - Certificate validation is enforced
    - Timeout settings prevent hanging connections
 
-For security concerns, please email security@example.com or create a security advisory on GitHub.
+For security concerns, please email brinlee0kidd@gmail.com or create a security advisory on GitHub.
