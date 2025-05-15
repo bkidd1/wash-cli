@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/bkidd1/wash-cli/cmd/wash/bug"
+	configcmd "github.com/bkidd1/wash-cli/cmd/wash/config"
 	"github.com/bkidd1/wash-cli/cmd/wash/file"
 	"github.com/bkidd1/wash-cli/cmd/wash/monitor"
 	"github.com/bkidd1/wash-cli/cmd/wash/project"
@@ -31,6 +32,7 @@ func init() {
 	rootCmd.AddCommand(file.Command())
 	rootCmd.AddCommand(bug.Command())
 	rootCmd.AddCommand(versioncmd.Command())
+	rootCmd.AddCommand(configcmd.Command())
 
 	// Add hidden commands
 	monitorCmd := monitor.Command()
@@ -98,7 +100,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 
 		if !hasKey {
 			fmt.Println("No OpenAI API key found. Please set your API key to continue.")
-			fmt.Println("You can do this later by running: wash config set-key")
+			fmt.Println("You can do this by running: wash config set-key")
 			return fmt.Errorf("API key not set")
 		}
 
